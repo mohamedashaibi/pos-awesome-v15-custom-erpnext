@@ -69,6 +69,20 @@
 					<v-btn
 						icon
 						size="small"
+						class="theme-toggle-btn pos-themed-button"
+						data-test="theme-toggle"
+						:aria-label="isDarkTheme ? __('Switch to light mode') : __('Switch to dark mode')"
+						@click="$theme.toggle()"
+					>
+						<v-icon class="pos-text-primary">{{ isDarkTheme ? "mdi-white-balance-sunny" : "mdi-weather-night" }}</v-icon>
+						<v-tooltip activator="parent" location="bottom">
+							{{ isDarkTheme ? __("Light mode") : __("Dark mode") }}
+						</v-tooltip>
+					</v-btn>
+
+					<v-btn
+						icon
+						size="small"
 						:class="[
 							'offline-invoices-btn mobile-btn pos-themed-button',
 							isRtl ? 'rtl-offline-btn' : 'ltr-offline-btn',
@@ -169,6 +183,19 @@
 				>
 					<v-btn
 						icon
+						class="theme-toggle-btn pos-themed-button"
+						data-test="theme-toggle"
+						:aria-label="isDarkTheme ? __('Switch to light mode') : __('Switch to dark mode')"
+						@click="$theme.toggle()"
+					>
+						<v-icon class="pos-text-primary">{{ isDarkTheme ? "mdi-white-balance-sunny" : "mdi-weather-night" }}</v-icon>
+						<v-tooltip activator="parent" location="bottom">
+							{{ isDarkTheme ? __("Light mode") : __("Dark mode") }}
+						</v-tooltip>
+					</v-btn>
+
+					<v-btn
+						icon
 						:class="[
 							'offline-invoices-btn pos-themed-button',
 							isRtl ? 'rtl-offline-btn' : 'ltr-offline-btn',
@@ -230,6 +257,7 @@
 </template>
 
 <script>
+import { unref } from "vue";
 import { useRtl } from "../../composables/core/useRtl";
 import { resolvePosBranding } from "../../config/branding";
 import { isCounterGridTemplate } from "../../utils/posUiTemplate";
@@ -313,11 +341,15 @@ export default {
 		},
 	},
 	computed: {
+		// $theme is a plain object of refs, so templates don't unwrap it
+		isDarkTheme() {
+			return Boolean(unref(this.$theme?.isDark));
+		},
 		branding() {
 			return resolvePosBranding(this.posProfile);
 		},
 		appBarColor() {
-			return this.$theme.isDark ? this.$vuetify.theme.themes.dark.colors.surface : "white";
+			return this.isDarkTheme ? this.$vuetify.theme.themes.dark.colors.surface : "white";
 		},
 
 		displayName() {
