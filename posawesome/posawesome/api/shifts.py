@@ -129,12 +129,23 @@ def check_opening_shift(user=None):
         filters={
             "user": authenticated_user,
             "pos_closing_shift": ["is", "not set"],
-            "docstatus": 1,
+            # Draft opening shifts also count as open
+            "docstatus": ["in", [0, 1]],
             "status": "Open",
         },
         fields=["name", "pos_profile"],
         order_by="period_start_date desc",
     )
+    if open_vouchers:
+        # Closing shifts are saved but not submitted, so the opening shift keeps status "Open";
+        # skip any opening shift that already has a closing shift.
+        with_closing = frappe.db.get_all(
+            "POS Closing Shift",
+            filters={"pos_opening_shift": ["in", [v["name"] for v in open_vouchers]], "docstatus": ["<", 2]},
+            pluck="pos_opening_shift",
+        )
+        if with_closing:
+            open_vouchers = [v for v in open_vouchers if v["name"] not in with_closing]
     data = ""
     if len(open_vouchers) > 0:
         get_authorized_pos_profile(open_vouchers[0]["pos_profile"])

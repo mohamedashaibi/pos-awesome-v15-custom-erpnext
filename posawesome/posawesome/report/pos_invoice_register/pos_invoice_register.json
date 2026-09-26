@@ -1,0 +1,12 @@
+{
+  "add_total_row": 0,
+  "apply_user_permissions": 1,
+  "doctype": "Report",
+  "is_standard": "Yes",
+  "module": "POSAwesome",
+  "name": "POS Invoice Register",
+  "ref_doctype": "Sales Invoice",
+  "report_name": "POS Invoice Register",
+  "report_type": "Script Report",
+  "roles": [{"role": "Accounts Manager"}, {"role": "Accounts User"}, {"role": "Sales User"}]
+}

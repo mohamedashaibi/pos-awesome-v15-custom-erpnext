@@ -283,5 +283,5 @@ def submit_closing_shift(closing_shift):
     closing_shift_doc.flags.ignore_permissions = True
     normalize_pos_payment_references(closing_shift_doc)
     closing_shift_doc.save()
-    closing_shift_doc.submit()
+    # Closing shifts are left as draft for review before submission
     return closing_shift_doc.name

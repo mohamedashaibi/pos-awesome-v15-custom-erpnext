@@ -94,12 +94,6 @@
 						<v-list-item-subtitle v-if="item.raw.customer_name !== item.raw.name">
 							<div>{{ __("ID") }}: {{ item.raw.name }}</div>
 						</v-list-item-subtitle>
-						<v-list-item-subtitle v-if="item.raw.tax_id">
-							<div>{{ __("TAX ID") }}: {{ item.raw.tax_id }}</div>
-						</v-list-item-subtitle>
-						<v-list-item-subtitle v-if="item.raw.email_id">
-							<div>{{ __("Email") }}: {{ item.raw.email_id }}</div>
-						</v-list-item-subtitle>
 						<v-list-item-subtitle v-if="item.raw.mobile_no">
 							<div>{{ __("Mobile No") }}: {{ item.raw.mobile_no }}</div>
 						</v-list-item-subtitle>

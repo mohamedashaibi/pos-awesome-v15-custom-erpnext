@@ -1,0 +1,15 @@
+frappe.query_reports["POS Invoice Register"] = {
+    filters: [
+        { fieldname: "from_date", label: __("From Date"), fieldtype: "Date", default: frappe.datetime.month_start(), width: "80" },
+        { fieldname: "to_date", label: __("To Date"), fieldtype: "Date", default: frappe.datetime.month_end(), width: "80" },
+        { fieldname: "sales_invoice", label: __("Sales Invoice"), fieldtype: "Link", options: "Sales Invoice", width: "120" },
+        { fieldname: "customer", label: __("Customer"), fieldtype: "Link", options: "Customer", width: "120" },
+        { fieldname: "customer_name", label: __("Customer Name"), fieldtype: "Data", width: "150" },
+        { fieldname: "grand_total_min", label: __("Grand Total (Min)"), fieldtype: "Currency", width: "120" },
+        { fieldname: "grand_total_max", label: __("Grand Total (Max)"), fieldtype: "Currency", width: "120" },
+        { fieldname: "currency", label: __("Currency"), fieldtype: "Link", options: "Currency", width: "80" },
+        { fieldname: "pos_opening_shift", label: __("POS Opening Shift"), fieldtype: "Link", options: "POS Opening Shift", width: "150" },
+        { fieldname: "pos_closing_shift", label: __("POS Closing Shift"), fieldtype: "Link", options: "POS Closing Shift", width: "150" },
+        { fieldname: "mode_of_payment", label: __("Mode of Payment"), fieldtype: "Link", options: "Mode of Payment", width: "120" },
+    ],
+};

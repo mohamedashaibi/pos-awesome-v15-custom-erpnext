@@ -34,7 +34,7 @@
 									v-model="customer_name"
 								></v-text-field>
 							</v-col>
-							<v-col cols="6">
+							<v-col cols="6" v-show="false">
 								<v-text-field
 									density="compact"
 									color="primary"
@@ -86,7 +86,7 @@
 								></v-select>
 							</v-col>
 
-							<v-col cols="6">
+							<v-col cols="6" v-show="false">
 								<v-text-field
 									density="compact"
 									color="primary"
@@ -96,7 +96,7 @@
 									v-model="email_id"
 								></v-text-field>
 							</v-col>
-							<v-col cols="6">
+							<v-col cols="6" v-show="false">
 								<v-select
 									density="compact"
 									:label="__('Gender')"
@@ -105,7 +105,7 @@
 									class="pos-themed-input"
 								></v-select>
 							</v-col>
-							<v-col cols="6">
+							<v-col cols="6" v-show="false">
 								<v-text-field
 									density="compact"
 									color="primary"
@@ -115,7 +115,7 @@
 									v-model="referral_code"
 								></v-text-field>
 							</v-col>
-							<v-col cols="6">
+							<v-col cols="6" v-show="false">
 								<v-text-field
 									v-model="birthday"
 									:label="frappe._('Birthday (DD-MM-YYYY)')"
