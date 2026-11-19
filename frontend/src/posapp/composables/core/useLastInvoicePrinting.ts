@@ -164,13 +164,9 @@ export function useLastInvoicePrinting() {
 			}
 		}
 
-		const printWindow = window.open(url, "Print");
-		if (printWindow) {
-			watchPrintWindow(printWindow, printOptions);
-			return;
-		}
-
-		console.warn("Popup blocked or failed to open print window");
+		// Tanami: reprint through a hidden frame, one press and no extra window
+		// (printview's own trigger is off so the page is sent to the printer once)
+		silentPrint(url.replace("trigger_print=1", "trigger_print=0"), printOptions);
 	}
 
 	return {

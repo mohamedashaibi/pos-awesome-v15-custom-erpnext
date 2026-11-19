@@ -1,15 +1,14 @@
 import { ref } from "vue";
 import type { Item, POSProfile } from "../../../../types/models";
+import {
+	isAsciiSearchToken,
+	normalizeSearchText,
+	tokenizeSearchText,
+} from "../../../../utils/searchText";
 
 export function useItemsSearch() {
 	const itemsMap = ref(new Map<string, Item>()); // O(1) lookup by item_code
 	const barcodeIndex = ref(new Map<string, Item>()); // O(1) barcode lookup
-
-	const normalizeSearchText = (value: unknown): string =>
-		String(value || "")
-			.normalize("NFKD")
-			.replace(/[\u0300-\u036f]/g, "")
-			.toLowerCase();
 
 	const registerLookupValue = (
 		index: Map<string, Item>,
@@ -54,21 +53,19 @@ export function useItemsSearch() {
 		return Array.from(new Set(values.filter(Boolean)));
 	};
 
-	const tokenizeSearchText = (value: unknown): string[] => {
-		const normalized = normalizeSearchText(value)
-			.replace(/[^a-z0-9]+/g, " ")
-			.trim();
-		if (!normalized) {
-			return [];
-		}
-		return Array.from(new Set(normalized.split(/\s+/).filter(Boolean)));
-	};
-
 	const isNearTokenMatch = (query: string, token: string): boolean => {
 		if (!query || !token) {
 			return false;
 		}
-		if (token.includes(query) || query.includes(token)) {
+		if (token.includes(query)) {
+			return true;
+		}
+		// Typo tolerance is kept for Latin words only; Arabic names and
+		// short tokens (sizes like "4") must match by containment.
+		if (!isAsciiSearchToken(query) || !isAsciiSearchToken(token)) {
+			return false;
+		}
+		if (token.length >= 3 && query.includes(token)) {
 			return true;
 		}
 		if (query.length < 4 || token.length < 4) {
@@ -193,6 +190,10 @@ export function useItemsSearch() {
 
 		const searchTerm = normalizeSearchText(term);
 		const searchTerms = tokenizeSearchText(searchTerm);
+		if (!searchTerms.length) {
+			// Nothing searchable (punctuation only): never match everything.
+			return [];
+		}
 		const normalizedGroup =
 			typeof itemGroup === "string" && itemGroup.length > 0
 				? itemGroup
@@ -288,6 +289,13 @@ export function useItemsSearch() {
 		) {
 			return 650;
 		}
+		if (
+			searchTerms.length &&
+			searchTerms.every((token) => normalizedName.includes(token))
+		) {
+			return 600;
+		}
+		if (normalizedCode.includes(searchTerm)) return 550;
 		if (item._search_index?.includes(searchTerm)) return 500;
 		return 100;
 	};

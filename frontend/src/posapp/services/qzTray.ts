@@ -512,5 +512,9 @@ export async function printDocumentViaQz(options: QzPrintDocumentOptions) {
 		throw new Error(translate("Unable to load print HTML from server."));
 	}
 
-	await printHtmlViaQz(buildPrintHtml(html, style), options);
+	// Tanami: documents are A5 (the receipt default of 80mm cuts them)
+	await printHtmlViaQz(buildPrintHtml(html, style), {
+		...options,
+		widthMm: options.widthMm || 148,
+	});
 }

@@ -26,6 +26,7 @@ const DENSE_LAYOUT_MIN_WIDTH = 900;
 type ColumnWidthConfig = { min: number; max: number; ratio: number };
 
 const STANDARD_COLUMN_WIDTHS: Record<string, ColumnWidthConfig> = {
+	row_no: { min: 40, max: 48, ratio: 0.045 },
 	item_name: { min: 160, max: 210, ratio: 0.23 },
 	qty: { min: 92, max: 112, ratio: 0.11 },
 	uom: { min: 92, max: 112, ratio: 0.1 },
@@ -39,6 +40,7 @@ const STANDARD_COLUMN_WIDTHS: Record<string, ColumnWidthConfig> = {
 };
 
 const DENSE_COLUMN_WIDTHS: Record<string, ColumnWidthConfig> = {
+	row_no: { min: 36, max: 42, ratio: 0.035 },
 	item_name: { min: 148, max: 178, ratio: 0.17 },
 	qty: { min: 82, max: 96, ratio: 0.085 },
 	uom: { min: 72, max: 88, ratio: 0.075 },
@@ -59,7 +61,8 @@ const getColumnWidthConfig = (header: TableHeader, dense: boolean) =>
 	};
 
 export const usesDenseColumnLayout = (headers: TableHeader[], width: number) =>
-	headers.length >= DENSE_COLUMN_COUNT && width >= DENSE_LAYOUT_MIN_WIDTH;
+	headers.filter((header) => header.key !== "row_no").length >=
+		DENSE_COLUMN_COUNT && width >= DENSE_LAYOUT_MIN_WIDTH;
 
 export function getResponsiveVisibleHeaders(
 	headers: TableHeader[],
@@ -68,6 +71,7 @@ export function getResponsiveVisibleHeaders(
 	const visibleHeaders = headers.filter((header) => {
 		if (
 			header.required ||
+			header.key === "row_no" ||
 			header.key === "item_name" ||
 			header.key === "qty" ||
 			header.key === "actions" ||
@@ -77,7 +81,7 @@ export function getResponsiveVisibleHeaders(
 		}
 
 		if (width > 0 && width < 450) {
-			return ["item_name", "qty", "amount", "actions"].includes(
+			return ["row_no", "item_name", "qty", "amount", "actions"].includes(
 				header.key,
 			);
 		}

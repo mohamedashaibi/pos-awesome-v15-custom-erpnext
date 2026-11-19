@@ -1168,3 +1168,25 @@
 	border: none !important;
 	background: transparent !important;
 }
+
+/* Row numbering and the flash on the row touched by the latest scan/add */
+.posa-cart-item-row__number {
+	color: var(--pos-text-secondary);
+	font-size: 0.8rem;
+	font-variant-numeric: tabular-nums;
+	padding-inline: 4px !important;
+}
+
+.posa-cart-item-row--recent > td {
+	animation: posa-cart-row-flash 1.5s ease-out;
+}
+
+@keyframes posa-cart-row-flash {
+	0%,
+	35% {
+		background-color: rgba(var(--v-theme-primary), 0.22);
+	}
+	100% {
+		background-color: transparent;
+	}
+}

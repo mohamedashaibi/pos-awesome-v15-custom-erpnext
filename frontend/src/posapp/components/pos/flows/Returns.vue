@@ -207,7 +207,10 @@
 								>
 									<div class="returns-result-card__top">
 										<div class="returns-result-card__identity">
-											<strong>{{ item.customer }}</strong>
+											<strong>{{ item.customer_name || item.customer }}</strong>
+											<span v-if="item.customer_name && item.customer_name !== item.customer">
+												{{ item.customer }}
+											</span>
 											<span>{{ item.name }}</span>
 										</div>
 										<div class="returns-result-card__amount">
@@ -262,6 +265,14 @@
 								}"
 								:items-per-page="25"
 							>
+								<template v-slot:item.customer="{ item }">
+									<div class="returns-customer-cell">
+										<span>{{ item.customer_name || item.customer }}</span>
+										<small v-if="item.customer_name && item.customer_name !== item.customer">
+											{{ item.customer }}
+										</small>
+									</div>
+								</template>
 								<template v-slot:item.posting_date="{ item }">
 									{{ formatDateDisplay(item.posting_date) }}
 								</template>
@@ -1029,6 +1040,17 @@ export default {
 
 .returns-table :deep(th) {
 	background: var(--pos-table-header-bg) !important;
+}
+
+.returns-customer-cell {
+	display: flex;
+	flex-direction: column;
+	gap: 2px;
+	padding: 4px 0;
+}
+
+.returns-customer-cell small {
+	color: var(--pos-text-secondary);
 }
 
 .returns-table :deep(tbody tr:hover) {

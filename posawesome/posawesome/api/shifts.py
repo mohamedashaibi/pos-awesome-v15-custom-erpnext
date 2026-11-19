@@ -12,6 +12,10 @@ from posawesome.posawesome.api.pos_access import (
     get_authorized_pos_profile,
 )
 
+from posawesome.posawesome.doctype.pos_opening_shift.pos_opening_shift import (
+    get_opening_shifts_with_closing,
+)
+
 from .utilities import get_version
 
 
@@ -85,17 +89,20 @@ def create_opening_voucher(pos_profile, company, balance_details):
             frappe.PermissionError,
         )
 
-    existing_opening = frappe.db.exists(
+    open_shifts = frappe.db.get_all(
         "POS Opening Shift",
-        {
+        filters={
             "user": user,
             "pos_profile": profile.get("name"),
             "pos_closing_shift": ["is", "not set"],
             "docstatus": 1,
             "status": "Open",
         },
+        pluck="name",
     )
-    if existing_opening:
+    # Mirror check_opening_shift: a shift with a closing shift no longer counts as open.
+    with_closing = get_opening_shifts_with_closing(open_shifts)
+    if any(name not in with_closing for name in open_shifts):
         frappe.throw(_("An open POS shift already exists for this POS Profile."))
 
     new_pos_opening = frappe.get_doc(

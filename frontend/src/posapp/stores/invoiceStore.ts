@@ -122,6 +122,19 @@ export const useInvoiceStore = defineStore("invoice", () => {
 	};
 
 	/**
+	 * Last cart row touched by an add (new line or quantity merge). `seq` changes on
+	 * every call so the cart table can react even when the same row is hit twice.
+	 */
+	const rowActivity = ref<{ rowId: string | null; seq: number }>({
+		rowId: null,
+		seq: 0,
+	});
+	const markRowActivity = (rowId: string | null | undefined) => {
+		if (!rowId) return;
+		rowActivity.value = { rowId, seq: rowActivity.value.seq + 1 };
+	};
+
+	/**
 	 * Walks every item in `itemsData` and recomputes `totalQty`, `grossTotal`,
 	 * and `discountTotal` from scratch in a single O(n) pass.
 	 *
@@ -759,6 +772,8 @@ export const useInvoiceStore = defineStore("invoice", () => {
 		itemsData, // Expose raw map if needed
 		packedItems,
 		metadata,
+		rowActivity,
+		markRowActivity,
 		totalQty,
 		grossTotal,
 		discountTotal,

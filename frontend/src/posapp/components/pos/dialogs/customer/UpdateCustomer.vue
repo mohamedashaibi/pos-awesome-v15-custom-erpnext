@@ -521,15 +521,8 @@ export default {
 				return;
 			}
 
-			if (!this.group) {
-				frappe.throw(__("Customer group is required"));
-				return;
-			}
-
-			if (!this.territory) {
-				frappe.throw(__("Customer territory is required"));
-				return;
-			}
+			// Tanami: the name is enough; an empty group / territory gets the site
+			// default on the server
 
 			// Format birthday to YYYY-MM-DD if it exists and is in another format
 			let formatted_birthday = null;
@@ -664,6 +657,26 @@ export default {
 				});
 				vm.close_dialog();
 				return;
+			}
+
+			// Tanami: renaming to a name another customer already carries is allowed,
+			// the cashier is only warned about it
+			if (this.customer_id) {
+				try {
+					const { message: sameName } = await frappe.call({
+						method: "tanami_workshop.party.same_name_customers",
+						args: { customer_name: args.customer_name, exclude: this.customer_id },
+					});
+					if (Array.isArray(sameName) && sameName.length) {
+						vm.toastStore.show({
+							title: __("Another customer already has this name: {0}", [sameName.join(", ")]),
+							color: "warning",
+							timeout: 8000,
+						});
+					}
+				} catch (error) {
+					console.warn("Duplicate name check failed", error);
+				}
 			}
 
 			frappe.call({

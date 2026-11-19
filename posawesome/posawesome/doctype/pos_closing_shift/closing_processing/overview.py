@@ -2,7 +2,11 @@ import frappe
 from frappe.utils import flt, json
 from collections import defaultdict
 from frappe import _
-from posawesome.posawesome.doctype.pos_closing_shift.closing_processing.utils import get_base_value
+from posawesome.posawesome.doctype.pos_closing_shift.closing_processing.utils import (
+    change_reduces_cash,
+    get_base_value,
+    get_cash_account,
+)
 from posawesome.posawesome.doctype.pos_closing_shift.closing_processing.data import (
     get_pos_invoices,
     get_payments_entries,
@@ -837,10 +841,23 @@ def get_payment_reconciliation_details(closing_shift_doc):
         row["base"] += flt(base_amount)
         row["amount"] += flt(amount)
 
+    def resolve_payment_currency(payment_row, invoice_currency):
+        for fieldname in (
+            "posa_payment_currency",
+            "currency",
+            "account_currency",
+            "payment_currency",
+        ):
+            value = payment_row.get(fieldname)
+            if value:
+                return value
+        return invoice_currency or company_currency
+
     cash_mode_of_payment = (
         frappe.db.get_value("POS Profile", closing_shift_doc.pos_profile, "posa_cash_mode_of_payment")
         or "Cash"
     )
+    cash_account = get_cash_account(cash_mode_of_payment, closing_shift_doc.company)
 
     for row in closing_shift_doc.get("pos_transactions", []):
         invoice = row.get("sales_invoice") or row.get("pos_invoice")
@@ -878,7 +895,9 @@ def get_payment_reconciliation_details(closing_shift_doc):
             )
 
         change_rows = invoice_doc.get("posa_change_returns") or []
-        if change_rows:
+        if not change_reduces_cash(invoice_doc, cash_account):
+            pass
+        elif change_rows:
             for change in change_rows:
                 update_payment_breakdown(
                     cash_mode_of_payment,

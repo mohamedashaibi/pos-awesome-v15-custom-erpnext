@@ -53,8 +53,8 @@ describe("Customer dropdown XSS regression", () => {
 	it("keeps Customer.vue dropdown fields on safe interpolation", () => {
 		expect(customerSource).not.toContain("v-html");
 		expect(customerSource).toContain('{{ __("ID") }}: {{ item.raw.name }}');
-		expect(customerSource).toContain('{{ __("TAX ID") }}: {{ item.raw.tax_id }}');
-		expect(customerSource).toContain('{{ __("Email") }}: {{ item.raw.email_id }}');
+		// the Tanami dropdown does not list tax id or email; nothing may render them as HTML either
+		expect(customerSource).not.toMatch(/v-html|innerHTML/);
 		expect(customerSource).toContain('{{ __("Mobile No") }}: {{ item.raw.mobile_no }}');
 		expect(customerSource).toContain('{{ __("Primary Address") }}: {{ item.raw.primary_address }}');
 	});

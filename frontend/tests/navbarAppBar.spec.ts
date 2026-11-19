@@ -65,6 +65,7 @@ describe("NavbarAppBar", () => {
 			props: {
 				posProfile: { name: "Main POS" },
 				cashierName: "Backup Cashier",
+				shiftName: "POSA-OS-26-0000012",
 				pendingInvoices: 0,
 				loadingProgress: 0,
 				loadingActive: false,
@@ -93,6 +94,7 @@ describe("NavbarAppBar", () => {
 		});
 
 		expect(wrapper.findAll('[data-test="cashier-chip"]')).toHaveLength(1);
+		expect(wrapper.find('[data-test="shift-chip"]').text()).toContain("POSA-OS-26-0000012");
 		expect(
 			wrapper.find('[data-test="profile-chip-secondary"]').exists(),
 		).toBe(false);

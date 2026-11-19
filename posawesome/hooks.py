@@ -122,6 +122,9 @@ doc_events = {
         "before_cancel": "posawesome.posawesome.api.invoice.before_cancel",
         "on_cancel": "posawesome.posawesome.api.invoice.on_cancel",
     },
+    "Payment Entry": {
+        "validate": "posawesome.posawesome.api.invoice.release_amended_client_request_id",
+    },
     "Customer": {
         "validate": "posawesome.posawesome.api.customer.validate",
         "after_insert": "posawesome.posawesome.api.customer.after_insert",

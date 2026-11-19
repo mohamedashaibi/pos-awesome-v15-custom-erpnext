@@ -13,19 +13,24 @@
 		@dragstart="onDragStart"
 		@dragend="onDragEnd"
 	>
-		<div class="card-item-image-container">
+		<div :class="['card-item-image-container', { 'is-monogram': !item.image }]">
 			<v-img
-				:src="item.image || placeholderImage"
+				v-if="item.image"
+				:src="item.image"
 				class="card-item-image"
-				aspect-ratio="1"
+				cover
 				:alt="item.item_name"
 			>
 				<template #placeholder>
 					<div class="image-placeholder">
-						<v-icon size="40" color="grey-lighten-2"> mdi-image </v-icon>
+						<v-icon size="28" color="grey-lighten-2"> mdi-image </v-icon>
 					</div>
 				</template>
 			</v-img>
+			<!-- No photo: a tinted monogram reads better than a stock placeholder -->
+			<div v-else :class="['card-item-monogram', `tone-${monogramTone}`]" aria-hidden="true">
+				{{ monogram }}
+			</div>
 		</div>
 		<div class="card-item-content">
 			<div class="card-item-header">
@@ -77,7 +82,6 @@
 
 <script setup>
 import { computed } from "vue";
-import placeholderImage from "../placeholder-image.png";
 import ItemRateInfoMenu from "./ItemRateInfoMenu.vue";
 import { priceListToSelectedCurrency } from "../../../utils/erpnextCurrency";
 
@@ -146,6 +150,18 @@ const secondaryPrecision = computed(() => {
 	return props.ratePrecision(secondaryRate.value);
 });
 
+// First letter of the item name, and a stable tint picked from the item code
+const monogram = computed(() => {
+	const name = String(props.item.item_name || props.item.item_code || "").trim();
+	return Array.from(name)[0] || "?";
+});
+const monogramTone = computed(() => {
+	const code = String(props.item.item_code || "");
+	let hash = 0;
+	for (let i = 0; i < code.length; i++) hash = (hash * 31 + code.charCodeAt(i)) >>> 0;
+	return hash % 6;
+});
+
 const rateInfo = computed(() => props.getItemRateInfo(props.item));
 
 const secondaryCurrency = computed(() => props.selectedCurrency);
@@ -194,92 +210,119 @@ const onDragEnd = (event) => {
 
 <style scoped>
 .card-item-card {
-	background: var(--pos-surface-raised);
-	border-radius: var(--pos-radius-md);
-	border: 1px solid var(--pos-border);
-	overflow: hidden;
-	transition:
-		transform 0.2s cubic-bezier(0.4, 0, 0.2, 1),
-		box-shadow 0.2s ease,
-		border-color 0.2s ease,
-		background-color 0.2s ease;
-	cursor: pointer;
+	position: relative;
 	display: flex;
 	flex-direction: column;
-	height: 100%;
 	width: 100%;
+	height: 100%;
+	overflow: hidden;
+	cursor: pointer;
+	background: var(--pos-surface-raised);
+	border: 1px solid var(--pos-border-light);
+	border-radius: var(--pos-radius-md);
 	box-shadow: var(--pos-elevation-1);
-	will-change: transform;
-	backface-visibility: hidden;
-	transform: translate3d(0, 0, 0);
-	position: relative;
+	transition:
+		transform 0.18s cubic-bezier(0.4, 0, 0.2, 1),
+		box-shadow 0.18s ease,
+		border-color 0.18s ease,
+		background-color 0.18s ease;
+	-webkit-tap-highlight-color: transparent;
+	user-select: none;
 }
 
 .card-item-card:hover {
-	transform: translate3d(0, -2px, 0);
+	transform: translateY(-2px);
+	border-color: color-mix(in srgb, var(--pos-primary) 45%, var(--pos-border));
 	box-shadow: var(--pos-elevation-2);
+}
+
+.card-item-card:active {
+	transform: scale(0.98);
+	box-shadow: var(--pos-elevation-1);
+}
+
+.card-item-card:focus-visible {
+	outline: none;
 	border-color: var(--pos-primary);
+	box-shadow: 0 0 0 3px var(--pos-focus-halo);
 }
 
 .card-item-card.item-highlighted {
 	border-color: var(--pos-primary);
-	box-shadow:
-		0 0 0 3px var(--pos-focus-halo),
-		var(--pos-elevation-2);
-	transform: translate3d(0, -1px, 0);
 	background: var(--pos-primary-container);
+	box-shadow: 0 0 0 3px var(--pos-focus-halo), var(--pos-elevation-2);
 }
 
+/* Photo / monogram tile */
 .card-item-image-container {
 	position: relative;
-	height: 132px;
 	flex-shrink: 0;
+	height: 84px;
+	margin: 8px 8px 0;
 	overflow: hidden;
-	background:
-		linear-gradient(
-			145deg,
-			color-mix(in srgb, var(--pos-primary-container) 42%, transparent),
-			transparent 64%
-		),
-		var(--pos-surface-muted);
+	border-radius: calc(var(--pos-radius-md) - 4px);
+	background: var(--pos-surface-muted);
 }
 
 .card-item-image {
 	width: 100%;
 	height: 100%;
-	object-fit: contain; /* Changed to contain to ensure full image visibility */
-	background-color: rgb(var(--v-theme-surface-bright));
 }
 
-/* Image Placeholder Style */
 .image-placeholder {
 	display: flex;
 	align-items: center;
 	justify-content: center;
 	width: 100%;
 	height: 100%;
-	background-color: rgb(var(--v-theme-surface-variant));
 }
 
+.card-item-monogram {
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	width: 100%;
+	height: 100%;
+	/* Nudged down so the stock badge in the corner never touches the letter */
+	padding-top: 14px;
+	font-size: 2rem;
+	font-weight: 700;
+	line-height: 1;
+	--tone: var(--pos-primary);
+	color: var(--tone);
+	background:
+		radial-gradient(120% 90% at 85% 0%, color-mix(in srgb, var(--tone) 22%, transparent), transparent 70%),
+		color-mix(in srgb, var(--tone) 12%, var(--pos-surface));
+}
+
+/* Six calm tints derived from the theme, so dark mode follows automatically */
+.card-item-monogram.tone-1 { --tone: var(--pos-accent); }
+.card-item-monogram.tone-2 { --tone: color-mix(in srgb, var(--pos-primary) 60%, #2b6cb0); }
+.card-item-monogram.tone-3 { --tone: color-mix(in srgb, var(--pos-accent) 55%, #b54a2c); }
+.card-item-monogram.tone-4 { --tone: color-mix(in srgb, var(--pos-primary) 55%, #6b4fa0); }
+.card-item-monogram.tone-5 { --tone: color-mix(in srgb, var(--pos-text-secondary) 80%, var(--pos-primary)); }
+
+/* Text */
 .card-item-content {
-	padding: var(--pos-space-3);
 	display: flex;
 	flex-direction: column;
 	flex-grow: 1;
-	justify-content: space-between;
-	gap: var(--pos-space-2);
+	gap: 6px;
+	min-height: 0;
+	padding: 10px 12px 12px;
 }
 
 .card-item-header {
 	display: flex;
 	flex-direction: column;
-	gap: var(--pos-space-1);
+	gap: 2px;
+	min-width: 0;
 }
 
 .card-item-name {
-	font-size: 0.98rem;
-	font-weight: 650;
 	margin: 0;
+	font-size: 0.92rem;
+	font-weight: 600;
 	line-height: 1.35;
 	color: var(--pos-text-primary);
 	overflow: hidden;
@@ -290,64 +333,85 @@ const onDragEnd = (event) => {
 }
 
 .card-item-code {
-	font-size: 0.72rem;
-	color: var(--pos-text-secondary);
 	display: block;
-	white-space: nowrap;
 	overflow: hidden;
+	font-size: 0.68rem;
+	letter-spacing: 0.04em;
+	color: var(--pos-text-muted);
+	white-space: nowrap;
 	text-overflow: ellipsis;
-	letter-spacing: 0.045em;
-	text-transform: uppercase;
 }
 
+/* Price + stock on one line */
 .card-item-details {
 	display: flex;
+	align-items: center;
 	justify-content: space-between;
-	align-items: flex-start;
-	margin-top: auto; /* Push to bottom */
-	gap: var(--pos-space-2);
+	gap: 6px;
+	margin-top: auto;
+	min-width: 0;
 }
 
 .card-item-price {
 	display: flex;
+	flex: 1;
 	flex-direction: column;
-	gap: var(--pos-space-1);
 	min-width: 0;
 }
 
 .primary-price {
 	display: flex;
 	align-items: baseline;
-	flex-wrap: wrap;
-	gap: var(--pos-space-1);
-	font-weight: 750;
-	color: var(--pos-primary);
-	font-size: 1.08rem;
+	gap: 4px;
+	white-space: nowrap;
+	font-size: 1.1rem;
+	font-weight: 700;
 	font-variant-numeric: tabular-nums;
+	color: var(--pos-primary);
+}
+
+.primary-price .currency-symbol {
+	font-size: 0.72rem;
+	font-weight: 600;
+	opacity: 0.8;
+}
+
+.primary-price > .v-btn {
+	align-self: center;
 }
 
 .secondary-price {
-	font-size: 0.8rem;
+	font-size: 0.74rem;
+	white-space: nowrap;
 	color: var(--pos-text-secondary);
 }
 
+/* Stock sits on the photo tile as a badge, so the price row never gets crowded */
 .card-item-stock {
-	text-align: right;
-	font-size: 0.82rem;
-	color: var(--pos-text-secondary);
-	display: flex;
-	flex-direction: row;
-	align-items: flex-end;
-	gap: 6px;
-	padding: 6px 8px;
-	border-radius: var(--pos-radius-xs);
-	border: 1px solid var(--pos-border-light);
-	background: var(--pos-surface-muted);
+	position: absolute;
+	top: 14px;
+	inset-inline-end: 14px;
+	display: inline-flex;
+	align-items: center;
+	gap: 3px;
+	padding: 2px 8px;
+	font-size: 0.72rem;
+	line-height: 1.5;
 	white-space: nowrap;
+	color: var(--pos-text-secondary);
+	background: color-mix(in srgb, var(--pos-surface-raised) 88%, transparent);
+	border: 1px solid var(--pos-border-light);
+	border-radius: 999px;
+	backdrop-filter: blur(4px);
+}
+
+.stock-icon {
+	font-size: 0.85rem !important;
+	opacity: 0.7;
 }
 
 .stock-amount {
-	font-weight: 700;
+	font-weight: 600;
 	font-variant-numeric: tabular-nums;
 }
 
@@ -356,25 +420,31 @@ const onDragEnd = (event) => {
 }
 
 .stock-uom {
-	font-size: 0.7rem;
+	font-size: 0.66rem;
 	text-transform: uppercase;
+	opacity: 0.8;
 }
 
 @media (max-width: 768px) {
 	.card-item-image-container {
-		height: 112px;
+		height: 72px;
 	}
 
 	.card-item-content {
-		padding: var(--pos-space-2);
+		padding: 8px 10px 10px;
 	}
 
 	.card-item-name {
-		font-size: 0.85rem;
+		font-size: 0.86rem;
 	}
+}
 
-	.card-item-code {
-		font-size: 0.7rem;
+@media (prefers-reduced-motion: reduce) {
+	.card-item-card,
+	.card-item-card:hover,
+	.card-item-card:active {
+		transition: none;
+		transform: none;
 	}
 }
 </style>

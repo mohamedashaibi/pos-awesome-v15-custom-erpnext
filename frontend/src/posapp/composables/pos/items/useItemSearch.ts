@@ -1,5 +1,6 @@
 import { ref } from "vue";
 import { perfMarkStart, perfMarkEnd } from "../../../utils/perf.js";
+import { normalizeSearchText } from "../../../utils/searchText";
 
 declare const frappe: any;
 
@@ -97,7 +98,7 @@ export function useItemSearch() {
 		// Filter by search term
 		const rawSearch = (searchTerm || "").trim();
 		if (rawSearch && rawSearch.length >= 3) {
-			const term = rawSearch.toLowerCase();
+			const term = normalizeSearchText(rawSearch);
 			const searchWords = term.split(/\s+/).filter(Boolean);
 
 			filtered = filtered.filter((item) => {
@@ -106,7 +107,7 @@ export function useItemSearch() {
 				// Collect all searchable values into a single string or array for checking
 				const searchable: string[] = [];
 				const pushValue = (v: unknown) => {
-					if (v) searchable.push(String(v).toLowerCase());
+					if (v) searchable.push(normalizeSearchText(v));
 				};
 
 				pushValue(item.item_code);
@@ -197,7 +198,7 @@ export function useItemSearch() {
 	) => {
 		if (!items || !items.length) return [];
 
-		const term = (searchTerm || "").trim().toLowerCase();
+		const term = normalizeSearchText(searchTerm);
 		const needsLocalSearch =
 			!searchAlreadyApplied && term && term.length >= 3;
 
@@ -241,22 +242,19 @@ export function useItemSearch() {
 
 			// 1. Search Filter
 			if (needsLocalSearch) {
-				let matches = false;
-				if (item._search_index) {
-					matches = activeTerms.every((t) =>
-						item._search_index!.includes(t),
-					);
-				} else {
-					// Fallback
-					const rawIndex = (
+				// Normalised here as well: an index stored by an older build
+				// does not have the Arabic letter variants unified.
+				const searchIndex = normalizeSearchText(
+					item._search_index ||
 						(item.item_code || "") +
-						" " +
-						(item.item_name || "") +
-						" " +
-						(item.barcode || "")
-					).toLowerCase();
-					matches = activeTerms.every((t) => rawIndex.includes(t));
-				}
+							" " +
+							(item.item_name || "") +
+							" " +
+							(item.barcode || ""),
+				);
+				const matches = activeTerms.every((t) =>
+					searchIndex.includes(t),
+				);
 				if (!matches) continue;
 			}
 

@@ -8,6 +8,9 @@ from frappe.utils import (
     nowdate,
 )
 from erpnext.accounts.doctype.sales_invoice.sales_invoice import get_bank_cash_account
+from posawesome.posawesome.doctype.pos_opening_shift.pos_opening_shift import (
+    get_opening_shifts_with_closing,
+)
 from posawesome.posawesome.api.invoice_processing.utils import (
     _get_return_validity_settings,
     _validate_return_window,
@@ -849,9 +852,9 @@ def _resolve_current_invoice_opening_shift(profile_doc, opening_shift=None):
     session_user = str(getattr(getattr(frappe, "session", None), "user", "") or "").strip()
     opening_shift = str(opening_shift or "").strip()
     if not opening_shift:
-        opening_shift = frappe.db.get_value(
+        open_shifts = frappe.db.get_all(
             "POS Opening Shift",
-            {
+            filters={
                 "pos_profile": profile_name,
                 "company": company,
                 "user": session_user,
@@ -859,8 +862,11 @@ def _resolve_current_invoice_opening_shift(profile_doc, opening_shift=None):
                 "status": "Open",
                 "pos_closing_shift": ["is", "not set"],
             },
-            "name",
+            pluck="name",
+            order_by="period_start_date desc",
         )
+        with_closing = get_opening_shifts_with_closing(open_shifts)
+        opening_shift = next((name for name in open_shifts if name not in with_closing), None)
     return _validate_invoice_opening_shift(
         profile_doc,
         {"posa_pos_opening_shift": opening_shift},

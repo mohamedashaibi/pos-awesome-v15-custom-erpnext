@@ -10,6 +10,20 @@ from frappe.model.document import Document
 from posawesome.posawesome.api.status_updater import StatusUpdater
 
 
+def get_opening_shifts_with_closing(opening_shifts):
+    """Return the opening shifts that already have a draft or submitted closing shift."""
+    opening_shifts = [name for name in opening_shifts or [] if name]
+    if not opening_shifts:
+        return set()
+    return set(
+        frappe.db.get_all(
+            "POS Closing Shift",
+            filters={"pos_opening_shift": ["in", opening_shifts], "docstatus": ["<", 2]},
+            pluck="pos_opening_shift",
+        )
+    )
+
+
 class POSOpeningShift(StatusUpdater):
     def validate(self):
         self.validate_pos_profile_and_cashier()
@@ -24,17 +38,20 @@ class POSOpeningShift(StatusUpdater):
         constraint on (user, pos_profile, status='Open'); recommended as a
         follow-up.
         """
-        existing = frappe.db.get_value(
+        open_shifts = frappe.db.get_all(
             "POS Opening Shift",
-            {
+            filters={
                 "user": self.user,
                 "pos_profile": self.pos_profile,
                 "status": "Open",
                 "docstatus": 1,
                 "name": ["!=", self.name],
             },
-            "name",
+            pluck="name",
         )
+        # A shift that already has a closing shift (even a draft) is being closed.
+        with_closing = get_opening_shifts_with_closing(open_shifts)
+        existing = next((name for name in open_shifts if name not in with_closing), None)
         if existing:
             frappe.throw(
                 _(

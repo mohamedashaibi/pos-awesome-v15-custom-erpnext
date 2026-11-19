@@ -267,6 +267,27 @@ export const useSocketStore = defineStore("socket", () => {
         setLastStockAdjustment: uiStore.setLastStockAdjustment,
       });
     });
+
+    // Tanami: a submitted or cancelled Price Update (tanami_workshop) reloads the items,
+    // so the new prices show without reopening the shift
+    let priceReloadTimer: ReturnType<typeof setTimeout> | null = null;
+    frappe.realtime.on("ws_item_prices_updated", () => {
+      if (priceReloadTimer) clearTimeout(priceReloadTimer);
+      priceReloadTimer = setTimeout(async () => {
+        priceReloadTimer = null;
+        try {
+          const [{ clearPriceListCache }, { useItemsStore }] = await Promise.all([
+            import("../../offline/index"),
+            import("./itemsStore"),
+          ]);
+          clearPriceListCache();
+          await useItemsStore().recoverItemCatalog({ reason: "price_update", preserveSearch: true });
+          toastStore.show({ title: __("Item prices updated"), color: "info" });
+        } catch (error) {
+          console.warn("Failed to reload items after a price update", error);
+        }
+      }, 1500);
+    });
   }
 
   return {

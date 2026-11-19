@@ -13,7 +13,7 @@ from posawesome.posawesome.api.idempotency import (
 )
 from posawesome.posawesome.api.invoice_processing.creation import (
     _reapply_incoming_payment_amounts,
-    submit_invoice,
+    _submit_invoice_once,
     trusted_invoice_shift_reassignment,
 )
 from posawesome.posawesome.api.utils import assert_pos_profile_write_allowed
@@ -27,6 +27,31 @@ TOP_LEVEL_EDITABLE_FIELDS = (
     "additional_discount_percentage",
     "apply_discount_on",
     "due_date",
+)
+CUSTOMER_DEPENDENT_FIELDS = (
+    "customer_name",
+    "title",
+    "debit_to",
+    "party_account_currency",
+    "customer_group",
+    "territory",
+    "tax_id",
+    "tax_category",
+    "customer_address",
+    "address_display",
+    "contact_person",
+    "contact_display",
+    "contact_mobile",
+    "contact_email",
+    "shipping_address_name",
+    "shipping_address",
+    "dispatch_address_name",
+    "dispatch_address",
+    "language",
+    "loyalty_program",
+    "loyalty_points",
+    "loyalty_amount",
+    "redeem_loyalty_points",
 )
 CHILD_ID_FIELDS = {
     "name",
@@ -127,6 +152,10 @@ def _get_edit_window_hours(pos_profile):
     except Exception:
         hours = DEFAULT_EDIT_WINDOW_HOURS
     return hours if hours > 0 else DEFAULT_EDIT_WINDOW_HOURS
+
+
+def _edit_window_configured():
+    return _meta_has_field("POS Profile", "posa_submitted_invoice_edit_window_hours")
 
 
 def _feature_enabled(pos_profile):
@@ -354,6 +383,103 @@ def _build_list_metadata_context(doctype, rows):
     }
 
 
+# --- Tanami: a submitted invoice is editable only while its shift is the cashier's open shift ---
+
+
+def _current_open_shift_name(pos_profile):
+    """The session user's open shift on this profile (submitted, Open, no submitted closing)."""
+    if not pos_profile:
+        return None
+    cache = getattr(frappe.local, "posa_current_open_shift", None)
+    if cache is None:
+        cache = frappe.local.posa_current_open_shift = {}
+    key = (frappe.session.user, pos_profile)
+    if key not in cache:
+        shifts = frappe.get_all(
+            "POS Opening Shift",
+            filters={
+                "user": frappe.session.user,
+                "pos_profile": pos_profile,
+                "docstatus": 1,
+                "status": "Open",
+            },
+            pluck="name",
+            order_by="period_start_date desc",
+        )
+        closed = set(
+            frappe.get_all(
+                "POS Closing Shift",
+                filters={"pos_opening_shift": ["in", shifts], "docstatus": 1},
+                pluck="pos_opening_shift",
+            )
+            if shifts
+            else []
+        )
+        cache[key] = next((shift for shift in shifts if shift not in closed), None)
+    return cache[key]
+
+
+def _invoice_shift_fields(doc):
+    """is_pos / opening shift of a list row that was fetched without them."""
+    if doc.get("posa_pos_opening_shift") is not None and doc.get("is_pos") is not None:
+        return cint(doc.get("is_pos")), doc.get("posa_pos_opening_shift")
+    if not _has_column(doc.doctype, "posa_pos_opening_shift"):
+        return cint(doc.get("is_pos")), None
+    values = frappe.db.get_value(doc.doctype, doc.name, ["is_pos", "posa_pos_opening_shift"]) or (0, None)
+    return cint(values[0]), values[1]
+
+
+def _in_current_open_shift(doc):
+    is_pos, shift = _invoice_shift_fields(doc)
+    return bool(is_pos and shift and shift == _current_open_shift_name(doc.get("pos_profile")))
+
+
+def get_submitted_invoice_edit_blockers(doc):
+    """Submitted returns and payment entries that stand in the way of editing the invoice.
+
+    `in_open_shift` marks the ones created in the cashier's open shift.
+    """
+    shift = _current_open_shift_name(doc.get("pos_profile"))
+    blockers = []
+    for row in frappe.get_all(
+        doc.doctype,
+        filters={"return_against": doc.name, "docstatus": 1},
+        fields=["name", "grand_total", "posa_pos_opening_shift"],
+        order_by="creation asc",
+    ):
+        blockers.append(
+            {
+                "kind": "return",
+                "doctype": doc.doctype,
+                "name": row.name,
+                "amount": abs(flt(row.grand_total)),
+                "in_open_shift": bool(shift and row.posa_pos_opening_shift == shift),
+            }
+        )
+    for row in frappe.db.sql(
+        """
+        select pe.name, pe.reference_no, sum(per.allocated_amount) as amount
+        from `tabPayment Entry Reference` per
+        join `tabPayment Entry` pe on pe.name = per.parent
+        where per.reference_doctype = %s and per.reference_name = %s and pe.docstatus = 1
+        group by pe.name, pe.reference_no
+        order by pe.creation asc
+        """,
+        (doc.doctype, doc.name),
+        as_dict=True,
+    ):
+        blockers.append(
+            {
+                "kind": "payment",
+                "doctype": "Payment Entry",
+                "name": row.name,
+                "amount": abs(flt(row.amount)),
+                "in_open_shift": bool(shift and row.reference_no == shift),
+            }
+        )
+    return blockers
+
+
 def _has_stored_value_settlement(doc):
     if flt(doc.get("posa_redeemed_customer_credit") or 0) > 0:
         return True
@@ -376,6 +502,13 @@ def get_submitted_invoice_edit_metadata(doc, list_context=None):
     age_hours = _hours_since(root_info.get("original_creation"))
     can_edit = True
     reason = None
+    in_open_shift = (
+        cint(doc.get("docstatus")) == 1
+        and not cint(doc.get("is_return"))
+        and not doc.get("return_against")
+        and _in_current_open_shift(doc)
+    )
+    blockers = get_submitted_invoice_edit_blockers(doc) if in_open_shift else []
 
     feature_enabled = (
         profile_settings.get("feature_enabled")
@@ -408,9 +541,17 @@ def get_submitted_invoice_edit_metadata(doc, list_context=None):
     ):
         can_edit = False
         reason = _("This invoice has already been amended. Edit the latest amended invoice.")
-    elif age_hours > window_hours:
+    elif _edit_window_configured() and age_hours > window_hours:
+        # Tanami: the open-shift rule below is the limit; hours count only when the
+        # profile has such a setting (a shift here can stay open longer than a day)
         can_edit = False
         reason = _("This invoice is outside the {0}-hour edit window.").format(window_hours)
+    elif not in_open_shift:
+        can_edit = False
+        reason = _("Only invoices of the currently open shift can be edited from the POS.")
+    elif blockers:
+        can_edit = False
+        reason = _("Cancel the linked return or payment receipt before editing this invoice.")
     elif (
         doc.name in list_context.get("closed_invoices", set())
         if list_context
@@ -425,8 +566,9 @@ def get_submitted_invoice_edit_metadata(doc, list_context=None):
     return {
         "can_edit_submitted_invoice": bool(can_edit),
         "edit_block_reason": reason,
-        "edit_window_hours": window_hours,
+        "edit_window_hours": window_hours if _edit_window_configured() else None,
         "edit_age_hours": age_hours,
+        "edit_blockers": blockers,
         **root_info,
     }
 
@@ -514,6 +656,15 @@ def build_submitted_invoice_amendment_payload(original_doc, correction_data=None
         if fieldname in correction:
             amended[fieldname] = correction.get(fieldname)
 
+    # Tanami: another customer on the corrected invoice brings its own name, receivable
+    # account, address and contact; whatever was copied from the old customer is dropped
+    # so that set_missing_values fills it in again
+    if amended.get("customer") and amended.get("customer") != original_doc.get("customer"):
+        if not frappe.db.exists("Customer", {"name": amended["customer"], "disabled": 0}):
+            frappe.throw(_("Customer {0} was not found.").format(amended["customer"]))
+        for fieldname in CUSTOMER_DEPENDENT_FIELDS:
+            amended.pop(fieldname, None)
+
     amended["items"] = _item_rows_from_correction(original_doc, correction)
     amended["payments"] = _payment_rows_from_correction(original_doc, correction)
 
@@ -568,7 +719,10 @@ def list_submitted_invoices(
         "amended_from",
         "pos_profile",
         "company",
+        "is_pos",
     ]
+    if _has_column(doctype, "posa_pos_opening_shift"):
+        metadata_fields.append("posa_pos_opening_shift")
     if _has_column(doctype, "pos_closing_entry"):
         metadata_fields.append("pos_closing_entry")
     if doctype == "POS Invoice":
@@ -587,6 +741,8 @@ def list_submitted_invoices(
         row["doctype"] = doctype
         doc = frappe._dict(row)
         row.update(get_submitted_invoice_edit_metadata(doc, list_context=list_context))
+        # Tanami: sales and returns of the open shift can be cancelled from the POS
+        row["can_cancel_from_pos"] = bool(_in_current_open_shift(doc))
     return rows
 
 
@@ -596,6 +752,74 @@ def get_submitted_invoice_for_edit(doctype, name, pos_profile=None, company=None
     doc = frappe.get_doc(doctype, name)
     metadata = assert_submitted_invoice_edit_allowed(doc, pos_profile=pos_profile, company=company)
     return {"invoice": doc.as_dict(), "metadata": metadata}
+
+
+@frappe.whitelist()
+def get_submitted_invoice_edit_item_price(doctype, name, item_code, pos_profile=None, company=None):
+    """Tanami: selling price list rate of an item being added to an invoice under edit."""
+    from erpnext.stock.get_item_details import get_price_list_rate_for
+
+    doctype = _normalize_doctype(doctype)
+    doc = frappe.get_doc(doctype, name)
+    assert_submitted_invoice_edit_allowed(doc, pos_profile=pos_profile, company=company)
+    item = frappe.db.get_value(
+        "Item", {"name": item_code, "disabled": 0}, ["name", "item_name", "stock_uom"], as_dict=True
+    )
+    if not item:
+        return {}
+    args = frappe._dict(
+        price_list=doc.get("selling_price_list"),
+        customer=doc.get("customer"),
+        uom=item.stock_uom,
+        stock_uom=item.stock_uom,
+        transaction_date=frappe.utils.nowdate(),
+        qty=1,
+        conversion_factor=1,
+    )
+    return {
+        "item_code": item.name,
+        "item_name": item.item_name,
+        "price_list_rate": flt(get_price_list_rate_for(args, item.name)),
+    }
+
+
+@frappe.whitelist()
+def search_submitted_invoice_edit_items(doctype, name, search=None, pos_profile=None, company=None, limit=20):
+    """Tanami: items whose code, name or barcode contains the text typed into the add-item row."""
+    doctype = _normalize_doctype(doctype)
+    doc = frappe.get_doc(doctype, name)
+    assert_submitted_invoice_edit_allowed(doc, pos_profile=pos_profile, company=company)
+    search = str(search or "").strip()
+    words = search.split()[:6]
+    if not words:
+        return []
+
+    def like(text):
+        return text.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+
+    conditions = []
+    values = []
+    for word in words:
+        pattern = f"%{like(word)}%"
+        conditions.append(
+            """(item.name like %s or item.item_name like %s or exists (
+                select 1 from `tabItem Barcode` barcode
+                where barcode.parent = item.name and barcode.barcode like %s))"""
+        )
+        values.extend([pattern, pattern, pattern])
+    values.extend([search, f"{like(search)}%", min(max(cint(limit), 1), 50)])
+    return frappe.db.sql(
+        f"""
+        select item.name as item_code, item.item_name, item.stock_uom
+        from `tabItem` item
+        where item.disabled = 0 and item.is_sales_item = 1 and item.has_variants = 0
+            and {" and ".join(conditions)}
+        order by (item.name = %s) desc, (item.name like %s) desc, item.item_name
+        limit %s
+        """,
+        values,
+        as_dict=True,
+    )
 
 
 @frappe.whitelist()
@@ -675,7 +899,9 @@ def submit_submitted_invoice_edit(
             frappe.flags.ignore_account_permission = True
             original_doc.cancel()
 
-            response = submit_invoice(
+            # Tanami: not submit_invoice(), whose deadlock retry rolls the whole
+            # transaction back (undoing the cancellation) and replays only the submit
+            response = _submit_invoice_once(
                 json.dumps(payload, default=str),
                 json.dumps(submission_data, default=str),
                 submit_in_background=False,
@@ -693,5 +919,64 @@ def submit_submitted_invoice_edit(
             },
         }
     except Exception:
-        frappe.db.rollback(save_point=savepoint)
+        try:
+            frappe.db.rollback(save_point=savepoint)
+        except Exception:
+            # the savepoint is gone when the database already rolled the transaction back
+            frappe.db.rollback()
         raise
+
+
+@frappe.whitelist()
+def cancel_submitted_invoice_edit_blocker(
+    doctype,
+    name,
+    blocker_doctype,
+    blocker_name,
+    pos_profile=None,
+    company=None,
+):
+    """Tanami: cancel a return or payment receipt of the open shift so its invoice can be edited.
+
+    Requested by the owner (requirements 11.9): the cashier has no general Cancel
+    permission; what authorizes this is the POS scope, checked here: write access to the
+    profile, the invoice in the cashier's own open shift, and the linked document created
+    in that same shift. Anything from a closed shift stays with management on the desk.
+    """
+    doctype = _normalize_doctype(doctype)
+    doc = frappe.get_doc(doctype, name)
+    profile_name = pos_profile or doc.get("pos_profile")
+    assert_pos_profile_write_allowed(profile_name, company=company or doc.get("company"))
+    if doc.get("pos_profile") != profile_name:
+        frappe.throw(_("Invoice {0} does not belong to POS Profile {1}.").format(doc.name, profile_name))
+    doc.check_permission("read")
+    if not _feature_enabled(profile_name):
+        frappe.throw(_("Submitted invoice editing is disabled for this POS Profile."))
+    if cint(doc.docstatus) != 1 or cint(doc.get("is_return")) or not _in_current_open_shift(doc):
+        frappe.throw(_("Only invoices of the currently open shift can be edited from the POS."))
+
+    blocker = next(
+        (
+            row
+            for row in get_submitted_invoice_edit_blockers(doc)
+            if row["doctype"] == blocker_doctype and row["name"] == blocker_name
+        ),
+        None,
+    )
+    if not blocker:
+        frappe.throw(_("{0} is not linked to invoice {1}.").format(blocker_name, doc.name))
+    if not blocker["in_open_shift"]:
+        frappe.throw(
+            _("{0} belongs to another shift and can only be cancelled by management.").format(blocker_name)
+        )
+
+    linked_doc = frappe.get_doc(blocker["doctype"], blocker["name"])
+    linked_doc.flags.ignore_permissions = True
+    frappe.flags.ignore_account_permission = True
+    linked_doc.cancel()
+
+    doc.reload()
+    return {
+        "cancelled": blocker["name"],
+        "metadata": get_submitted_invoice_edit_metadata(doc),
+    }

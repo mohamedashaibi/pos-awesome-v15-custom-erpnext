@@ -23,7 +23,7 @@ export async function show_payment(context: any) {
 	try {
 		if (!context.customer) {
 			context.toastStore.show({
-				title: __(`Select a customer`),
+				title: __("Customer must be selected before completing the sale"),
 				color: "error",
 			});
 			return;

@@ -140,6 +140,34 @@
 
 				<div :class="['profile-section', isRtl ? 'rtl-profile-section' : 'ltr-profile-section']">
 					<v-chip
+						v-if="shiftName"
+						variant="outlined"
+						:class="[
+							'profile-chip shift-chip pos-themed-card',
+							isRtl ? 'rtl-profile-chip' : 'ltr-profile-chip',
+						]"
+						data-test="shift-chip"
+					>
+						<v-icon
+							:start="!isRtl"
+							:end="isRtl"
+							:class="['pos-text-primary', isRtl ? 'rtl-profile-icon' : 'ltr-profile-icon']"
+						>
+							mdi-clock-outline
+						</v-icon>
+						<span
+							:class="[
+								'profile-chip__content',
+								isRtl ? 'rtl-profile-text' : 'ltr-profile-text',
+							]"
+						>
+							<span class="profile-chip__meta">{{ __("Shift No.") }}</span>
+							<span class="pos-text-primary profile-chip__title shift-chip__name">
+								{{ shiftName }}
+							</span>
+						</span>
+					</v-chip>
+					<v-chip
 						v-if="cashierChipLabel"
 						variant="outlined"
 						:class="[
@@ -336,6 +364,10 @@ export default {
 			default: "Loading app data...",
 		},
 		cashierName: {
+			type: String,
+			default: "",
+		},
+		shiftName: {
 			type: String,
 			default: "",
 		},
@@ -798,6 +830,9 @@ export default {
 
 /* Profile Section */
 .profile-section {
+	display: flex;
+	align-items: center;
+	gap: 8px;
 	margin: 0;
 	order: 2;
 	/* Second to last in actions section */
@@ -851,6 +886,27 @@ export default {
 	background: var(--pos-primary-container) !important;
 	border-color: var(--pos-primary) !important;
 	box-shadow: var(--pos-elevation-1);
+}
+
+/* Shift chip: information only, not a button */
+.shift-chip,
+.shift-chip:hover {
+	cursor: default;
+	transform: none;
+	background: var(--pos-surface-muted) !important;
+	border-color: var(--pos-border) !important;
+	box-shadow: none;
+}
+
+.shift-chip__name {
+	direction: ltr;
+	white-space: nowrap;
+}
+
+@media (max-width: 767px) {
+	.shift-chip {
+		display: none;
+	}
 }
 
 /* RTL Profile Chip Styling */

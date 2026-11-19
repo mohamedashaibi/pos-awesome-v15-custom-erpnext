@@ -62,6 +62,7 @@ import { memory, persist, db, checkDbHealth } from "./db";
 import { emitBootstrapSnapshotUpdated } from "../posapp/utils/bootstrapRuntimeEvents";
 import { finishStartupPhase, startStartupPhase } from "../utils/startupTrace";
 import { itemPriceRepository } from "./repositories";
+import { normalizeSearchText } from "../posapp/utils/searchText";
 
 const normalizeScope = (scope: unknown): string => String(scope || "");
 const hasScope = (scope: unknown): boolean => normalizeScope(scope).length > 0;
@@ -102,11 +103,7 @@ type SearchableItem = Record<string, any> & {
 };
 
 const normalizeSearchValue = (value: unknown): string =>
-	String(value || "")
-		.normalize("NFKD")
-		.replace(/[\u0300-\u036f]/g, "")
-		.toLowerCase()
-		.trim();
+	normalizeSearchText(value);
 
 const uniqueStrings = (values: unknown[]): string[] =>
 	Array.from(
@@ -226,14 +223,18 @@ const itemMatchesStoredSearch = (
 	term: string,
 	terms: string[],
 ) => {
-	const itemName = item.item_name_lc || normalizeSearchValue(item.item_name);
-	const itemCode = item.item_code_lc || normalizeSearchValue(item.item_code);
-	const searchText = item.search_text || "";
-	const barcodes = Array.isArray(item.barcodes_lc)
-		? item.barcodes_lc
-		: Array.isArray(item.barcodes)
-			? item.barcodes.map(normalizeSearchValue)
-			: [];
+	// Rows saved before the Arabic normalisation still hold the old *_lc
+	// values, so they are normalised again here instead of trusted as-is.
+	const itemName = normalizeSearchValue(item.item_name_lc || item.item_name);
+	const itemCode = normalizeSearchValue(item.item_code_lc || item.item_code);
+	const searchText = normalizeSearchValue(item.search_text);
+	const barcodes = (
+		Array.isArray(item.barcodes_lc)
+			? item.barcodes_lc
+			: Array.isArray(item.barcodes)
+				? item.barcodes
+				: []
+	).map(normalizeSearchValue);
 
 	const nameMatch =
 		itemName && terms.every((token) => itemName.includes(token));
@@ -250,18 +251,22 @@ const scoreStoredItemSearch = (
 	term: string,
 	terms: string[],
 ) => {
-	const itemName = item.item_name_lc || normalizeSearchValue(item.item_name);
-	const itemCode = item.item_code_lc || normalizeSearchValue(item.item_code);
-	const barcodes = Array.isArray(item.barcodes_lc)
-		? item.barcodes_lc
-		: Array.isArray(item.barcodes)
-			? item.barcodes.map(normalizeSearchValue)
-			: [];
-	const nameKeywords = Array.isArray(item.name_keywords_lc)
-		? item.name_keywords_lc
-		: Array.isArray(item.name_keywords)
-			? item.name_keywords.map(normalizeSearchValue)
-			: [];
+	const itemName = normalizeSearchValue(item.item_name_lc || item.item_name);
+	const itemCode = normalizeSearchValue(item.item_code_lc || item.item_code);
+	const barcodes = (
+		Array.isArray(item.barcodes_lc)
+			? item.barcodes_lc
+			: Array.isArray(item.barcodes)
+				? item.barcodes
+				: []
+	).map(normalizeSearchValue);
+	const nameKeywords = (
+		Array.isArray(item.name_keywords_lc)
+			? item.name_keywords_lc
+			: Array.isArray(item.name_keywords)
+				? item.name_keywords
+				: []
+	).map(normalizeSearchValue);
 
 	if (itemCode === term) return 1000;
 	if (barcodes.includes(term)) return 950;
@@ -275,6 +280,10 @@ const scoreStoredItemSearch = (
 	) {
 		return 650;
 	}
+	if (terms.length && terms.every((token) => itemName.includes(token))) {
+		return 600;
+	}
+	if (itemCode.includes(term)) return 550;
 	return 100;
 };
 

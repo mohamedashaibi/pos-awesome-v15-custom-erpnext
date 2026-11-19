@@ -25,12 +25,27 @@ SUBMISSION_LEDGER_DOCTYPE = "POS Invoice Submission Ledger"
 
 
 def validate(doc, method):
+    release_amended_client_request_id(doc)
     validate_shift(doc)
     validate_pos_invoice_item_sale_controls(doc)
     set_patient(doc)
     auto_set_delivery_charges(doc)
     calc_delivery_charges(doc)
     apply_tax_inclusive(doc)
+
+
+def release_amended_client_request_id(doc, method=None):
+    """Drop a client request ID inherited from the cancelled source document.
+
+    Desk's Amend copies ``no_copy`` fields, so the amendment would otherwise
+    collide with the cancelled document on the unique request ID.
+    """
+    request_id = doc.get("posa_client_request_id")
+    amended_from = doc.get("amended_from")
+    if not request_id or not amended_from or not doc.is_new():
+        return
+    if frappe.db.get_value(doc.doctype, amended_from, "posa_client_request_id") == request_id:
+        doc.posa_client_request_id = None
 
 
 def before_submit(doc, method):

@@ -103,25 +103,27 @@
 							)
 						}}
 					</v-alert>
-					<v-text-field
-						v-model="cashierPin"
-						:type="showPin ? 'text' : 'password'"
-						name="pos-cashier-switch-pin"
-						autocomplete="one-time-code"
-						inputmode="numeric"
-						pattern="[0-9]*"
-						data-1p-ignore="true"
-						data-lpignore="true"
-						data-bwignore="true"
-						:append-inner-icon="showPin ? 'mdi-eye-off-outline' : 'mdi-eye-outline'"
-						variant="outlined"
-						density="comfortable"
-						hide-details="auto"
-						:label="__('Cashier PIN')"
-						:data-test="'cashier-pin-input'"
-						@click:append-inner="showPin = !showPin"
-						@keyup.enter="submitSwitch"
-					/>
+					<form autocomplete="off" class="pos-pin-form" @submit.prevent>
+						<v-text-field
+							v-model="cashierPin"
+							:type="showPin ? 'text' : 'password'"
+							name="pos-cashier-switch-pin"
+							autocomplete="one-time-code"
+							inputmode="numeric"
+							pattern="[0-9]*"
+							data-1p-ignore="true"
+							data-lpignore="true"
+							data-bwignore="true"
+							:append-inner-icon="showPin ? 'mdi-eye-off-outline' : 'mdi-eye-outline'"
+							variant="outlined"
+							density="comfortable"
+							hide-details="auto"
+							:label="__('Cashier PIN')"
+							:data-test="'cashier-pin-input'"
+							@click:append-inner="showPin = !showPin"
+							@keyup.enter="submitSwitch"
+						/>
+					</form>
 				</template>
 				<v-alert
 					v-if="pinError"
@@ -239,26 +241,28 @@
 							)
 						}}
 					</v-alert>
-					<v-text-field
-						v-model="cashierPin"
-						:type="showPin ? 'text' : 'password'"
-						name="pos-terminal-unlock-pin"
-						autocomplete="one-time-code"
-						inputmode="numeric"
-						pattern="[0-9]*"
-						data-1p-ignore="true"
-						data-lpignore="true"
-						data-bwignore="true"
-						:append-inner-icon="showPin ? 'mdi-eye-off-outline' : 'mdi-eye-outline'"
-						variant="outlined"
-						density="comfortable"
-						hide-details="auto"
-						:label="__('Cashier PIN')"
-						data-test="terminal-unlock-pin"
-						autofocus
-						@click:append-inner="showPin = !showPin"
-						@keyup.enter="submitUnlock"
-					/>
+					<form autocomplete="off" class="pos-pin-form" @submit.prevent>
+						<v-text-field
+							v-model="cashierPin"
+							:type="showPin ? 'text' : 'password'"
+							name="pos-terminal-unlock-pin"
+							autocomplete="one-time-code"
+							inputmode="numeric"
+							pattern="[0-9]*"
+							data-1p-ignore="true"
+							data-lpignore="true"
+							data-bwignore="true"
+							:append-inner-icon="showPin ? 'mdi-eye-off-outline' : 'mdi-eye-outline'"
+							variant="outlined"
+							density="comfortable"
+							hide-details="auto"
+							:label="__('Cashier PIN')"
+							data-test="terminal-unlock-pin"
+							autofocus
+							@click:append-inner="showPin = !showPin"
+							@keyup.enter="submitUnlock"
+						/>
+					</form>
 				</template>
 				<v-alert
 					v-if="pinError"

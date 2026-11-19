@@ -243,6 +243,7 @@ export function useItemAddition() {
 		const currentItems = [...pendingItems];
 		const currentResolvers = [...pendingResolvers];
 		const currentUpdates = new Map(pendingUpdates);
+		let lastTouchedRowId: string | null = null;
 
 		pendingItems = [];
 		pendingResolvers = [];
@@ -281,6 +282,7 @@ export function useItemAddition() {
 				}
 			}
 
+			if (item?.posa_row_id) lastTouchedRowId = item.posa_row_id;
 			// Resolve all promises waiting for this update, even if the row disappeared.
 			data.resolvers.forEach((r) => r(item));
 		}
@@ -297,6 +299,9 @@ export function useItemAddition() {
 				insertIndex,
 			);
 			const firstAddedIndex = insertIndex < 0 ? existingItemCount : 0;
+			const newestAdded =
+				insertIndex < 0 ? addedItems[addedItems.length - 1] : addedItems[0];
+			if (newestAdded?.posa_row_id) lastTouchedRowId = newestAdded.posa_row_id;
 
 			addedItems.forEach((item, index) => {
 				const resolvers = currentResolvers[index] || []; // Array of resolvers
@@ -331,6 +336,8 @@ export function useItemAddition() {
 		if (context.invoiceStore?.touch) {
 			context.invoiceStore.touch();
 		}
+		// Let the cart table bring the added/merged row into view
+		context.invoiceStore?.markRowActivity?.(lastTouchedRowId);
 
 		// Trigger background flush if any updates or additions happened
 		if (context.triggerBackgroundFlush) context.triggerBackgroundFlush();

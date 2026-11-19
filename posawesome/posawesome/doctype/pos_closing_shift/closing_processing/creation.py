@@ -1,7 +1,11 @@
 import frappe
 from frappe import _
 from frappe.utils import flt, json
-from posawesome.posawesome.doctype.pos_closing_shift.closing_processing.utils import get_base_value
+from posawesome.posawesome.doctype.pos_closing_shift.closing_processing.utils import (
+    change_reduces_cash,
+    get_base_value,
+    get_cash_account,
+)
 from posawesome.posawesome.doctype.pos_closing_shift.closing_processing.data import (
     get_pos_invoices,
     get_payments_entries,
@@ -108,6 +112,7 @@ def make_closing_shift_from_opening(opening_shift):
         )
         or "Cash"
     )
+    cash_account = get_cash_account(cash_mode_of_payment, closing_shift.company)
 
     invoices = get_pos_invoices(opening_shift.get("name"), doctype, submit_printed=0)
 
@@ -214,7 +219,9 @@ def make_closing_shift_from_opening(opening_shift):
             )
 
         change_rows = d.get("posa_change_returns") or []
-        if change_rows:
+        if not change_reduces_cash(d, cash_account):
+            pass
+        elif change_rows:
             for change in change_rows:
                 add_payment_amount(
                     cash_mode_of_payment,

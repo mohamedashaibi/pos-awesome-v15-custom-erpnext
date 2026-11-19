@@ -255,6 +255,27 @@ def _build_search_plan(
     )
 
 
+_ARABIC_SEARCH_FOLD = str.maketrans(
+    {
+        "\u0622": "\u0627",  # آ -> ا
+        "\u0623": "\u0627",  # أ -> ا
+        "\u0625": "\u0627",  # إ -> ا
+        "\u0671": "\u0627",  # ٱ -> ا
+        "\u0629": "\u0647",  # ة -> ه
+        "\u0649": "\u064a",  # ى -> ي
+        "\u0640": None,  # tatweel
+        **{chr(code): None for code in range(0x064B, 0x0660)},  # tashkeel
+        "\u0670": None,
+    }
+)
+
+
+def normalize_search_text(value: Any) -> str:
+    """Lowercase, unify Arabic letter variants and collapse whitespace (matching only)."""
+
+    return " ".join(cstr(value).translate(_ARABIC_SEARCH_FOLD).lower().split())
+
+
 def _collect_searchable_values(row: Dict[str, Any]) -> List[str]:
     """Return a list of normalised strings used for word filtering."""
 
@@ -309,9 +330,9 @@ def _collect_searchable_values(row: Dict[str, Any]) -> List[str]:
 
     normalized_values: List[str] = []
     for val in values:
-        normalized = cstr(val).strip()
+        normalized = normalize_search_text(val)
         if normalized:
-            normalized_values.append(normalized.lower())
+            normalized_values.append(normalized)
     return normalized_values
 
 
@@ -323,6 +344,7 @@ def _matches_search_words(row: Dict[str, Any], search_words: Sequence[str], word
 
     searchable_values = _collect_searchable_values(row)
     for word in search_words:
+        word = normalize_search_text(word)
         if not any(word in value for value in searchable_values):
             return False
     return True

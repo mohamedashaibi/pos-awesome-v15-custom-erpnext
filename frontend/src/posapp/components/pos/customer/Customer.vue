@@ -103,6 +103,11 @@
 					</v-list-item>
 				</template>
 			</v-autocomplete>
+			<CustomerBalanceBar
+				:customer="selectedCustomer || ''"
+				:company="balanceCompany"
+				:currency="balanceCurrency"
+			/>
 			<v-progress-linear
 				v-if="showCustomerLoadProgress"
 				:model-value="customerLoadPercent"
@@ -237,6 +242,7 @@ import { ref, computed, watch, onMounted, onBeforeUnmount, getCurrentInstance, n
 import { storeToRefs } from "pinia";
 import _ from "lodash";
 import UpdateCustomer from "../dialogs/customer/UpdateCustomer.vue";
+import CustomerBalanceBar from "./CustomerBalanceBar.vue";
 import { useCustomersStore } from "../../../stores/customersStore.js";
 import { customerMatchesSearchTerm } from "../../../stores/customers/customerSearch";
 import { useOnlineStatus } from "../../../composables/core/useOnlineStatus";
@@ -250,6 +256,7 @@ export default {
 	},
 	components: {
 		UpdateCustomer,
+		CustomerBalanceBar,
 	},
 	setup(props, { expose }) {
 		const { proxy } = getCurrentInstance();
@@ -612,8 +619,15 @@ export default {
 			detachScrollListener();
 		});
 
+		// Tanami: balance bar under the customer field
+		const balanceCompany = computed(() => uiStore.posProfile?.company || "");
+		const balanceCurrency = computed(() => uiStore.posProfile?.currency || "");
+
 		return {
 			customerDropdown,
+			selectedCustomer,
+			balanceCompany,
+			balanceCurrency,
 			filteredCustomers,
 			loadingCustomers,
 			isCustomerBackgroundLoading,

@@ -8,7 +8,7 @@
 			role="gridcell"
 			:data-column-key="column.key"
 		>
-			<span v-if="column.key === 'data-table-expand'" class="counter-grid-entry-index">
+			<span v-if="column.key === 'row_no'" class="counter-grid-entry-index">
 				{{ rowNumber }}
 			</span>
 			<label v-else-if="column.key === 'item_name'" class="counter-grid-entry-editor">

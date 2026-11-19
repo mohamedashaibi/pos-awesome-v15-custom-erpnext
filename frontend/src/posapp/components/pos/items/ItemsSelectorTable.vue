@@ -26,6 +26,12 @@
 			<template v-if="multiSelect" v-slot:header.item-select>
 				<v-checkbox-btn :model-value="allSelected" @click.stop="emit('select-all', !allSelected)" />
 			</template>
+			<template v-slot:item.item_name="{ item }">
+				<div class="item-name-cell">
+					<span v-if="showCodeUnderName && item.item_name" class="item-name-cell__code">{{ item.item_code }}</span>
+					<span class="item-name-cell__name">{{ item.item_name || item.item_code }}</span>
+				</div>
+			</template>
 			<template v-slot:item.rate="{ item }">
 				<div v-if="context !== 'purchase'">
 					<div class="text-primary rate-cell-primary">
@@ -151,6 +157,9 @@ const props = defineProps({
 });
 
 const emit = defineEmits(["row-click", "list-scroll", "toggle-selection", "select-all"]);
+
+// the code sits beside the name unless the profile already shows it in its own column
+const showCodeUnderName = computed(() => !props.headers.some((header) => header?.key === "item_code"));
 
 const effectiveHeaders = computed(() => {
 	if (!props.multiSelect) return props.headers;
@@ -408,5 +417,36 @@ defineExpose({ scrollToIndex, getTableElement, tableRef });
 	-webkit-font-smoothing: antialiased;
 	-moz-osx-font-smoothing: grayscale;
 	letter-spacing: 0.01em;
+}
+
+.item-name-cell {
+	display: flex;
+	align-items: center;
+	flex-wrap: wrap;
+	gap: 6px;
+	padding: 4px 0;
+}
+
+.item-name-cell__name {
+	min-width: 0;
+	overflow-wrap: anywhere;
+	line-height: 1.35;
+}
+
+.item-name-cell__code {
+	display: inline-flex;
+	align-items: center;
+	flex: 0 0 auto;
+	padding: 2px 8px;
+	border-radius: 6px;
+	background: rgba(var(--v-theme-primary), 0.12);
+	color: rgb(var(--v-theme-primary));
+	border: 1px solid rgba(var(--v-theme-primary), 0.35);
+	font-size: 0.9em;
+	font-weight: 700;
+	line-height: 1.3;
+	white-space: nowrap;
+	direction: ltr;
+	unicode-bidi: isolate;
 }
 </style>

@@ -8,6 +8,7 @@
 		<NavbarAppBar
 			:pos-profile="posProfile"
 			:cashier-name="currentCashierDisplay"
+			:shift-name="shiftName"
 			:pending-invoices="pendingInvoices"
 			:loading-progress="loadingProgress"
 			:loading-active="loadingActive"
@@ -372,6 +373,9 @@ export default {
 		},
 	},
 	computed: {
+		shiftName() {
+			return String(this.uiStore.posOpeningShift?.name || "").trim();
+		},
 		posProfileName() {
 			return String(this.posProfile?.name || "").trim();
 		},

@@ -3,9 +3,11 @@ import renderOfflineInvoiceHTML from "../../../../offline_print_template";
 import {
 	appendDebugPrintParam,
 	isDebugPrintEnabled,
+	printHtmlDocument,
 	silentPrint,
 	watchPrintWindow,
 } from "../../../plugins/print";
+import { printHtmlViaQz } from "../../../services/qzTray";
 import {
 	confirmDocumentPrintFallback,
 	printDocumentViaConfiguredQz,
@@ -98,10 +100,57 @@ export function usePaymentPrinting(options: PaymentPrintingOptions) {
 		win.print();
 	};
 
-	const loadPrintPage = async (input: { doc?: any; doctype?: string; name?: string } = {}) => {
+	/**
+	 * Tanami: print the receipt from the invoice as it stands on screen, without waiting
+	 * for the background submission. The server only renders the print format from the
+	 * data sent; the invoice number is the one of the saved draft.
+	 */
+	const printFromScreenData = async (context: ReturnType<typeof resolvePrintContext>, docname: string) => {
+		const { doc, profile, doctype, print_format } = context;
+		const response = await frappe.call({
+			method: "frappe.www.printview.get_html_and_style",
+			args: {
+				doc: JSON.stringify({ ...doc, doctype, name: docname, docstatus: 0, posa_is_printed: 1 }),
+				print_format: print_format || "Standard",
+				no_letterhead: 1,
+			},
+		});
+		const body = response?.message?.html;
+		if (!body) {
+			throw new Error("Unable to load print HTML from server.");
+		}
+		const bundle = frappe.assets?.bundled_asset?.("print.bundle.css");
+		const rtl = frappe.utils?.is_rtl?.();
+		const html = `<!DOCTYPE html>
+<html lang="${frappe.boot?.lang || "ar"}" dir="${rtl ? "rtl" : "ltr"}">
+<head>
+<meta charset="utf-8">
+${bundle ? `<link rel="stylesheet" href="${bundle}">` : ""}
+<style>${response.message.style || ""}</style>
+</head>
+<body><div class="print-format-gutter"><div class="print-format">${body}</div></div></body>
+</html>`;
+		if (shouldUseConfiguredQzDocumentPrinting(profile) && !shouldUseRawDocumentPrinting(profile)) {
+			await printHtmlViaQz(html, { widthMm: 148 });
+			return;
+		}
+		await printHtmlDocument(html);
+	};
+
+	const loadPrintPage = async (
+		input: { doc?: any; doctype?: string; name?: string; fromScreen?: boolean } = {},
+	) => {
 		const { doc, profile, doctype, print_format, letter_head } = resolvePrintContext(input);
 		if (isExchangeReceiptDocument(doc)) {
 			await printExchangeReceipt(doc, profile);
+			return;
+		}
+		if (input.fromScreen && !isOffline()) {
+			const screenName = resolveDocumentName(input.name || doc?.name);
+			if (!screenName) {
+				throw new Error("Cannot print document without a document name");
+			}
+			await printFromScreenData(resolvePrintContext(input), screenName);
 			return;
 		}
 		const debugPrint = isDebugPrintEnabled();

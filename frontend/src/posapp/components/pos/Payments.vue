@@ -72,6 +72,15 @@
 							@show-paid-change="showPaidChange"
 							@update-credit-change="handleCreditChangeUpdate"
 						/>
+						<!-- Tanami: what the customer will owe once this invoice is submitted -->
+						<CustomerBalanceBar
+							v-if="!invoice_doc.is_return"
+							after
+							:customer="invoice_doc.customer || ''"
+							:company="pos_profile?.company || ''"
+							:currency="pos_profile?.currency || ''"
+							:change="balanceChangeFromInvoice"
+						/>
 						<ChangeCurrencyHelper
 							:enabled="changeCurrencyEnabled"
 							:change-due="change_due"
@@ -403,6 +412,7 @@ import { getExchangeSettlement } from "../../utils/exchangeSettlement";
 
 // Components
 import PaymentSummary from "./payments/PaymentSummary.vue";
+import CustomerBalanceBar from "./customer/CustomerBalanceBar.vue";
 import ChangeCurrencyHelper from "./payments/ChangeCurrencyHelper.vue";
 import InvoiceTotals from "./payments/InvoiceTotals.vue";
 import PaymentActionButtons from "./payments/PaymentActionButtons.vue";
@@ -821,6 +831,7 @@ const {
 	},
 	eventBus: eventBus,
 	onSubmit: (args, submitPrint) => {
+		submitPrint = Boolean(submitPrint) || autoPrintReceipt();
 		submitInvoiceWrapper(submitPrint, {
 			onPrint: (doc, printOptions = {}) => {
 				if (submitPrint) {
@@ -834,11 +845,7 @@ const {
 					} else if (isOffline()) {
 						printOfflineInvoice(doc);
 					} else {
-						loadPrintPage({
-							doc,
-							doctype: printOptions.doctype,
-							name: printOptions.name,
-						});
+						printSubmittedInvoice(doc, printOptions);
 					}
 				}
 			},
@@ -1837,6 +1844,36 @@ const runDeferredPrintWorkflow = async ({
 	}
 };
 
+// Tanami: a receipt rendered from the screen data falls back to the print that waits
+// for the background submission when the quick rendering fails.
+const printSubmittedInvoice = (doc, printOptions = {}) => {
+	const request = {
+		doc,
+		doctype: printOptions.doctype,
+		name: printOptions.name,
+		fromScreen: Boolean(printOptions.fromScreen),
+	};
+	Promise.resolve(loadPrintPage(request)).catch((error) => {
+		console.warn("Receipt print failed", error);
+		if (!request.fromScreen) return;
+		void runDeferredPrintWorkflow({
+			name: request.name || doc?.name,
+			doctype: request.doctype,
+			waitForInvoiceProcessing: true,
+		});
+	});
+};
+
+// Tanami: effect of this invoice on the customer's balance: the unpaid part is added,
+// change kept as credit is deducted (change handed back in cash changes nothing)
+const balanceChangeFromInvoice = computed(() => {
+	const diff = Number(diff_payment.value || 0);
+	return diff > 0 ? diff : -Number(credit_change.value || 0);
+});
+
+// Tanami: "Print Receipt on Order Complete" on the POS Profile prints after every payment
+const autoPrintReceipt = () => parseBooleanSetting(pos_profile.value?.print_receipt_on_order_complete);
+
 const scheduleBackgroundStatusCheck = ({
 	name,
 	doctype,
@@ -1899,6 +1936,7 @@ const scheduleBackgroundStatusCheck = ({
 
 // Submission Wrapper
 const submit = async (_event, payment_received = false, print = false) => {
+	print = Boolean(print) || autoPrintReceipt();
 	await submitInvoiceWrapper(print, undefined, {
 		paymentReceived: payment_received,
 	});
@@ -1926,11 +1964,7 @@ const submitInvoiceWrapper = async (print, callbackOverrides = {}, options = {})
 					} else if (isOffline()) {
 						printOfflineInvoice(doc);
 					} else {
-						loadPrintPage({
-							doc,
-							doctype: printOptions.doctype,
-							name: printOptions.name,
-						});
+						printSubmittedInvoice(doc, printOptions);
 					}
 				}
 			},

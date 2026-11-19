@@ -237,14 +237,19 @@ export function usePaymentCalculations(options: PaymentCalculationOptions) {
 	const diff_label = computed(() => {
 		const doc = unref(invoiceDoc);
 		const currency = doc ? doc.currency : "";
+		// Tanami: translated (these were fixed English strings)
+		const translate = (text: string) => {
+			const translator = (globalThis as any).__;
+			return typeof translator === "function" ? translator(text, [currency]) : text.replace("{0}", currency);
+		};
 		if (doc?.is_return) {
 			return diff_payment.value < 0
-				? `Remaining Refund (${currency})`
-				: `Change (${currency})`;
+				? translate("Remaining Refund ({0})")
+				: translate("Change ({0})");
 		}
 		return diff_payment.value > 0
-			? `To Be Paid (${currency})`
-			: `Change (${currency})`;
+			? translate("To Be Paid ({0})")
+			: translate("Change ({0})");
 	});
 
 	const total_payments_display = computed(() => {

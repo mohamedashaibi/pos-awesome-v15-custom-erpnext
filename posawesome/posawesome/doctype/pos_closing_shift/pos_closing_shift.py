@@ -5,7 +5,10 @@ import frappe
 from frappe import _
 from frappe.model.document import Document
 from frappe.utils import flt
-from posawesome.posawesome.doctype.pos_closing_shift.closing_processing.utils import get_base_value
+from posawesome.posawesome.doctype.pos_closing_shift.closing_processing.utils import (
+    get_base_value,
+    get_cash_account,
+)
 from posawesome.posawesome.doctype.pos_closing_shift.closing_processing.data import (
     get_cashiers,
     get_pos_invoices,
@@ -65,12 +68,17 @@ class POSClosingShift(Document):
             expected_currency = flt(d.get("expected_amount_in_currency"), precision)
             has_currency_closing = d.get("closing_amount_in_currency") not in (None, "")
             closing_currency = flt(d.get("closing_amount_in_currency"), precision)
-            if d.get("currency") and has_currency_closing:
-                conversion_rate = (
-                    abs(flt(d.expected_amount, precision) / expected_currency)
-                    if expected_currency
-                    else 1
-                )
+            conversion_rate = (
+                abs(flt(d.expected_amount, precision) / expected_currency) if expected_currency else 1
+            )
+            # The POS dialog fills closing_amount_in_currency, the desk form fills closing_amount.
+            # A zero currency amount is only the column default once the row was saved, so it must
+            # not wipe a closing amount typed in the desk form.
+            if d.get("currency") and not closing_currency and flt(d.closing_amount, precision):
+                closing_currency = flt(flt(d.closing_amount, precision) / conversion_rate, precision)
+                d.closing_amount_in_currency = closing_currency
+                d.difference_in_currency = closing_currency - expected_currency
+            elif d.get("currency") and has_currency_closing:
                 d.closing_amount = flt(closing_currency * conversion_rate, precision)
                 d.difference_in_currency = closing_currency - expected_currency
             d.difference = +flt(d.closing_amount, precision) - flt(d.expected_amount, precision)
@@ -101,3 +109,19 @@ class POSClosingShift(Document):
     @frappe.whitelist()
     def get_payment_reconciliation_details(self):
         return get_payment_reconciliation_details(self)
+
+
+@frappe.whitelist()
+def get_cash_account_for_shift(pos_opening_shift):
+    """Return the cash drawer account used to decide whether change reduces cash."""
+
+    shift = frappe.db.get_value(
+        "POS Opening Shift", pos_opening_shift, ["pos_profile", "company"], as_dict=True
+    )
+    if not shift:
+        return None
+
+    cash_mode_of_payment = (
+        frappe.db.get_value("POS Profile", shift.pos_profile, "posa_cash_mode_of_payment") or "Cash"
+    )
+    return get_cash_account(cash_mode_of_payment, shift.company)

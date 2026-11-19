@@ -118,6 +118,7 @@ describe("usePaymentSubmission", () => {
 	it("allows warning-only below-cost policy and shows a warning", async () => {
 		const toastShow = vi.fn();
 		const invoiceDoc = ref<any>({
+			customer: "CUST-0001",
 			is_return: 0,
 			items: [{ item_code: "LOW", qty: 1, rate: 9, trade_price: 10 }],
 			payments: [{ mode_of_payment: "Cash", amount: 9, type: "Cash" }],
@@ -147,6 +148,7 @@ describe("usePaymentSubmission", () => {
 			reason: "Approved clearance",
 		});
 		const invoiceDoc = ref<any>({
+			customer: "CUST-0001",
 			is_return: 0,
 			items: [{ item_code: "LOW", qty: 1, rate: 9, trade_price: 10 }],
 			payments: [{ mode_of_payment: "Cash", amount: 9, type: "Cash" }],
@@ -173,7 +175,7 @@ describe("usePaymentSubmission", () => {
 		);
 	});
 
-	it("defers print and schedules background wait when invoice submission is queued", async () => {
+	it("prints from the screen data at once and schedules the background wait when submission is queued", async () => {
 		const invoiceService = (
 			await import("../src/posapp/services/invoiceService")
 		).default;
@@ -227,19 +229,32 @@ describe("usePaymentSubmission", () => {
 			onFinishNavigation: vi.fn(),
 		});
 
-		expect(onPrint).not.toHaveBeenCalled();
+		expect(onPrint).toHaveBeenCalledTimes(1);
+		expect(onPrint).toHaveBeenCalledWith(
+			expect.objectContaining({
+				name: "ACC-SINV-0001",
+				doctype: "Sales Invoice",
+				payments: [expect.objectContaining({ mode_of_payment: "Cash", amount: 690 })],
+			}),
+			expect.objectContaining({
+				name: "ACC-SINV-0001",
+				doctype: "Sales Invoice",
+				fromScreen: true,
+			}),
+		);
+		// the background check no longer prints a second copy
 		expect(onScheduleBackgroundCheck).toHaveBeenCalledWith(
 			expect.objectContaining({
 				name: "ACC-SINV-0001",
 				doctype: "Sales Invoice",
-				print: true,
+				print: false,
 				waitForInvoiceProcessing: true,
 				waitForPostSubmitPayments: true,
 			}),
 		);
 	});
 
-	it("schedules deferred printing instead of calling onPrint when post-submit work remains", async () => {
+	it("prints the submitted invoice at once even when post-submit work remains", async () => {
 		const invoiceService = (
 			await import("../src/posapp/services/invoiceService")
 		).default;
@@ -293,11 +308,16 @@ describe("usePaymentSubmission", () => {
 			onScheduleBackgroundCheck,
 		});
 
-		expect(onPrint).not.toHaveBeenCalled();
+		expect(onPrint).toHaveBeenCalledTimes(1);
+		expect(onPrint).toHaveBeenCalledWith(
+			expect.objectContaining({ name: "ACC-SINV-0002", docstatus: 1 }),
+			expect.objectContaining({ name: "ACC-SINV-0002", fromScreen: false }),
+		);
 		expect(onScheduleBackgroundCheck).toHaveBeenCalledWith(
 			expect.objectContaining({
 				name: "ACC-SINV-0002",
 				doctype: "Sales Invoice",
+				print: false,
 				waitForInvoiceProcessing: false,
 				waitForPostSubmitPayments: true,
 			}),
@@ -367,8 +387,7 @@ describe("usePaymentSubmission", () => {
 			expect.objectContaining({
 				name: "ACC-SINV-0004",
 				doctype: "Sales Invoice",
-				waitForInvoiceProcessing: false,
-				waitForPostSubmitPayments: false,
+				fromScreen: false,
 			}),
 		);
 		expect(onScheduleBackgroundCheck).not.toHaveBeenCalled();
@@ -439,8 +458,7 @@ describe("usePaymentSubmission", () => {
 			expect.objectContaining({
 				name: "SAL-ORD-0001",
 				doctype: "Sales Order",
-				waitForInvoiceProcessing: false,
-				waitForPostSubmitPayments: false,
+				fromScreen: false,
 			}),
 		);
 		expect(mergeInvoiceDoc).toHaveBeenCalledWith({
@@ -1869,6 +1887,7 @@ describe("usePaymentSubmission", () => {
 		const invoiceDoc = ref<any>({
 			name: "ACC-SINV-RETURN-WITHOUT-INVOICE",
 			doctype: "Sales Invoice",
+			customer: "CUST-0001",
 			is_return: 1,
 			items: [{ item_code: "ITEM-1", qty: -1 }],
 			payments: [
@@ -1899,6 +1918,27 @@ describe("usePaymentSubmission", () => {
 		});
 
 		await expect(validateSubmission(false)).resolves.toBe(true);
+	});
+
+	it("refuses to submit a sale without a customer", async () => {
+		const invoiceDoc = ref<any>({
+			is_return: 0,
+			items: [{ item_code: "ITEM-1", qty: 1, rate: 10 }],
+			payments: [{ mode_of_payment: "Cash", amount: 10, type: "Cash" }],
+			rounded_total: 10,
+			grand_total: 10,
+		});
+		const { validateSubmission } = usePaymentSubmission({
+			invoiceDoc,
+			posProfile: ref({}),
+			stockSettings: ref({}),
+			invoiceType: ref("Invoice"),
+			formatFloat: (value) => Number(value || 0),
+			isCashback: ref(true),
+			diff_payment: ref(0) as any,
+		});
+
+		await expect(validateSubmission(false)).rejects.toThrow(/Customer must be selected/);
 	});
 
 	it("rejects cashback above paid amount for returns against an original invoice", async () => {

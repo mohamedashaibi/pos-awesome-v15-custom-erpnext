@@ -72,6 +72,11 @@ export function useScannerInput(options: ScannerInputOptions = {}) {
 	const scanDebounceId = ref<any>(null);
 	const scanQueuedCode = ref("");
 	const activeScanCodes = new Set<string>();
+	// One physical scan can reach us through several listeners within a few ms;
+	// the same code arriving later than this is the cashier scanning it again.
+	const scanEchoWindow = 300;
+	const lastScanAcceptedAt = new Map<string, number>();
+	const queuedRescans = new Map<string, number>();
 
 	// Keyboard Scan Detection State
 	const keyboardScanBuffer = ref("");
@@ -273,12 +278,15 @@ export function useScannerInput(options: ScannerInputOptions = {}) {
 		resetKeyboardScanDetection();
 		const normalizedCode = String(scannedCode || "").trim();
 		if (!normalizedCode) return;
-		if (
-			scanQueuedCode.value === normalizedCode ||
-			activeScanCodes.has(normalizedCode)
-		) {
-			return;
-		}
+		if (scanQueuedCode.value === normalizedCode) return;
+
+		const scanTime = getScanTimestamp();
+		const lastAcceptedAt = lastScanAcceptedAt.get(normalizedCode);
+		const isEcho =
+			lastAcceptedAt !== undefined &&
+			scanTime - lastAcceptedAt < scanEchoWindow;
+		const isActive = activeScanCodes.has(normalizedCode);
+		if (isActive && isEcho) return;
 
 		if (scannerLocked.value) {
 			playScanTone("error");
@@ -323,8 +331,36 @@ export function useScannerInput(options: ScannerInputOptions = {}) {
 			} finally {
 				activeScanCodes.delete(code);
 				perfMarkEnd("pos:scan-handler", mark);
+				runQueuedRescan(code);
 			}
 		};
+
+		const runQueuedRescan = (code: string) => {
+			const remaining = queuedRescans.get(code) || 0;
+			if (!remaining) return;
+			if (scannerLocked.value) {
+				queuedRescans.delete(code);
+				return;
+			}
+			if (remaining > 1) queuedRescans.set(code, remaining - 1);
+			else queuedRescans.delete(code);
+			activeScanCodes.add(code);
+			scheduleFrame(() => {
+				runScanPipeline(code).catch((e: any) =>
+					handleScanPipelineError(e, code),
+				);
+			});
+		};
+
+		lastScanAcceptedAt.set(normalizedCode, scanTime);
+		if (isActive) {
+			// Still adding the previous scan of this barcode: add this one right after it
+			queuedRescans.set(
+				normalizedCode,
+				(queuedRescans.get(normalizedCode) || 0) + 1,
+			);
+			return;
+		}
 
 		if (scanDebounceId.value) clearTimeout(scanDebounceId.value);
 		scanQueuedCode.value = normalizedCode;

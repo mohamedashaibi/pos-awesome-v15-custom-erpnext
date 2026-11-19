@@ -183,7 +183,7 @@
 								<div class="summary-tile summary-tile--history">
 									<div class="summary-tile__label">{{ __("Invoices") }}</div>
 									<div class="summary-tile__value">
-										{{ filteredHistoryInvoices.length }}
+										{{ historyActiveCount }}
 									</div>
 									<div class="summary-tile__meta">
 										{{ __("Completed and active sales in this range") }}
@@ -323,6 +323,30 @@
 											:aria-label="__('Edit submitted invoice')"
 											@click="openEditInvoice(item)"
 										/>
+										<!-- Tanami: a return or receipt of the open shift stands in the way of editing -->
+										<v-btn
+											v-if="nextEditBlocker(item)"
+											prepend-icon="mdi-link-variant-off"
+											variant="tonal"
+											size="small"
+											color="warning"
+											:loading="cancellingBlockerFor === item.name"
+											@click="cancelEditBlocker(item)"
+										>
+											{{ editBlockerLabel(item) }}
+										</v-btn>
+										<!-- Tanami: sales and returns of the open shift can be cancelled with a reason -->
+										<v-btn
+											v-if="canCancelFromPos(item)"
+											icon="mdi-cancel"
+											variant="text"
+											size="small"
+											color="error"
+											:data-testid="`invoice-management-cancel-${item.name}`"
+											:title="__('Cancel Invoice')"
+											:aria-label="__('Cancel Invoice')"
+											@click="openCancelInvoice(item)"
+										/>
 										<v-btn
 											icon="mdi-printer-outline"
 											variant="text"
@@ -341,7 +365,7 @@
 											@click="shareInvoice(item)"
 										/>
 										<v-btn
-											v-if="posProfile?.posa_allow_return == 1"
+											v-if="posProfile?.posa_allow_return == 1 && !item.is_cancelled"
 											icon="mdi-backup-restore"
 											variant="text"
 											size="small"
@@ -486,6 +510,30 @@
 											:aria-label="__('Edit submitted invoice')"
 											@click="openEditInvoice(invoice)"
 										/>
+										<!-- Tanami: a return or receipt of the open shift stands in the way of editing -->
+										<v-btn
+											v-if="nextEditBlocker(invoice)"
+											prepend-icon="mdi-link-variant-off"
+											variant="tonal"
+											size="small"
+											color="warning"
+											:loading="cancellingBlockerFor === invoice.name"
+											@click="cancelEditBlocker(invoice)"
+										>
+											{{ editBlockerLabel(invoice) }}
+										</v-btn>
+										<!-- Tanami: sales and returns of the open shift can be cancelled with a reason -->
+										<v-btn
+											v-if="canCancelFromPos(invoice)"
+											icon="mdi-cancel"
+											variant="text"
+											size="small"
+											color="error"
+											:data-testid="`invoice-management-cancel-${invoice.name}`"
+											:title="__('Cancel Invoice')"
+											:aria-label="__('Cancel Invoice')"
+											@click="openCancelInvoice(invoice)"
+										/>
 										<v-btn
 											icon="mdi-printer-outline"
 											size="small"
@@ -504,7 +552,7 @@
 											@click="shareInvoice(invoice)"
 										/>
 										<v-btn
-											v-if="posProfile?.posa_allow_return == 1"
+											v-if="posProfile?.posa_allow_return == 1 && !invoice.is_cancelled"
 											icon="mdi-backup-restore"
 											size="small"
 											variant="text"
@@ -743,6 +791,30 @@
 											:aria-label="__('Edit submitted invoice')"
 											@click="openEditInvoice(item)"
 										/>
+										<!-- Tanami: a return or receipt of the open shift stands in the way of editing -->
+										<v-btn
+											v-if="nextEditBlocker(item)"
+											prepend-icon="mdi-link-variant-off"
+											variant="tonal"
+											size="small"
+											color="warning"
+											:loading="cancellingBlockerFor === item.name"
+											@click="cancelEditBlocker(item)"
+										>
+											{{ editBlockerLabel(item) }}
+										</v-btn>
+										<!-- Tanami: sales and returns of the open shift can be cancelled with a reason -->
+										<v-btn
+											v-if="canCancelFromPos(item)"
+											icon="mdi-cancel"
+											variant="text"
+											size="small"
+											color="error"
+											:data-testid="`invoice-management-cancel-${item.name}`"
+											:title="__('Cancel Invoice')"
+											:aria-label="__('Cancel Invoice')"
+											@click="openCancelInvoice(item)"
+										/>
 										<v-btn
 											icon="mdi-eye-outline"
 											variant="text"
@@ -900,6 +972,30 @@
 											:title="__('Edit Invoice')"
 											:aria-label="__('Edit submitted invoice')"
 											@click="openEditInvoice(invoice)"
+										/>
+										<!-- Tanami: a return or receipt of the open shift stands in the way of editing -->
+										<v-btn
+											v-if="nextEditBlocker(invoice)"
+											prepend-icon="mdi-link-variant-off"
+											variant="tonal"
+											size="small"
+											color="warning"
+											:loading="cancellingBlockerFor === invoice.name"
+											@click="cancelEditBlocker(invoice)"
+										>
+											{{ editBlockerLabel(invoice) }}
+										</v-btn>
+										<!-- Tanami: sales and returns of the open shift can be cancelled with a reason -->
+										<v-btn
+											v-if="canCancelFromPos(invoice)"
+											icon="mdi-cancel"
+											variant="text"
+											size="small"
+											color="error"
+											:data-testid="`invoice-management-cancel-${invoice.name}`"
+											:title="__('Cancel Invoice')"
+											:aria-label="__('Cancel Invoice')"
+											@click="openCancelInvoice(invoice)"
 										/>
 										<v-btn
 											icon="mdi-eye-outline"
@@ -1229,6 +1325,12 @@
 								<template #item.return_against="{ item }">{{
 									item.return_against || "-"
 								}}</template>
+								<template #item.name="{ item }">
+									{{ item.name }}
+									<v-chip v-if="item.is_cancelled" size="x-small" color="error" variant="tonal" class="ms-1">{{
+										__("Cancelled")
+									}}</v-chip>
+								</template>
 								<template #item.actions="{ item }">
 									<div class="d-flex justify-end ga-1">
 										<v-btn
@@ -1238,6 +1340,18 @@
 											:title="__('View Details')"
 											:aria-label="__('View invoice details')"
 											@click="viewInvoice(item)"
+										/>
+										<!-- Tanami: sales and returns of the open shift can be cancelled with a reason -->
+										<v-btn
+											v-if="canCancelFromPos(item)"
+											icon="mdi-cancel"
+											variant="text"
+											size="small"
+											color="error"
+											:data-testid="`invoice-management-cancel-${item.name}`"
+											:title="__('Cancel Invoice')"
+											:aria-label="__('Cancel Invoice')"
+											@click="openCancelInvoice(item)"
 										/>
 										<v-btn
 											icon="mdi-printer-outline"
@@ -1275,6 +1389,9 @@
 												</div>
 												<v-chip size="small" color="error" variant="flat">{{
 													__("Return")
+												}}</v-chip>
+												<v-chip v-if="invoice.is_cancelled" size="small" color="error" variant="tonal">{{
+													__("Cancelled")
 												}}</v-chip>
 											</div>
 											<div class="invoice-record-card__subtitle">
@@ -1326,6 +1443,18 @@
 											:title="__('View Details')"
 											:aria-label="__('View invoice details')"
 											@click="viewInvoice(invoice)"
+										/>
+										<!-- Tanami: sales and returns of the open shift can be cancelled with a reason -->
+										<v-btn
+											v-if="canCancelFromPos(invoice)"
+											icon="mdi-cancel"
+											variant="text"
+											size="small"
+											color="error"
+											:data-testid="`invoice-management-cancel-${invoice.name}`"
+											:title="__('Cancel Invoice')"
+											:aria-label="__('Cancel Invoice')"
+											@click="openCancelInvoice(invoice)"
 										/>
 										<v-btn
 											icon="mdi-printer-outline"
@@ -1522,6 +1651,55 @@
 		</v-card>
 	</v-dialog>
 
+	<!-- Tanami: cancel an invoice of the open shift; the reason is mandatory -->
+	<v-dialog v-model="cancelDialog" max-width="520px" persistent :theme="isDarkTheme ? 'dark' : 'light'">
+		<v-card data-testid="invoice-cancel-dialog">
+			<v-card-title class="text-h6">
+				{{
+					cancelTarget?.is_return
+						? __("Cancel return invoice {0}", [cancelTarget?.name])
+						: __("Cancel invoice {0}", [cancelTarget?.name])
+				}}
+			</v-card-title>
+			<v-card-text>
+				<div class="text-body-2 text-medium-emphasis mb-3">
+					{{ __("Stock and payments of this invoice will be reversed. This cannot be undone.") }}
+				</div>
+				<v-alert v-if="cancelError" type="error" variant="tonal" density="compact" class="mb-3">
+					{{ cancelError }}
+				</v-alert>
+				<v-textarea
+					v-model="cancelReason"
+					variant="outlined"
+					density="compact"
+					rows="3"
+					auto-grow
+					autofocus
+					hide-details
+					data-testid="invoice-cancel-reason"
+					:label="__('Cancellation Reason') + ' *'"
+				/>
+			</v-card-text>
+			<v-card-actions>
+				<v-spacer />
+				<v-btn variant="text" :disabled="cancelSubmitting" @click="closeCancelInvoice">
+					{{ __("Close") }}
+				</v-btn>
+				<v-btn
+					color="error"
+					variant="flat"
+					prepend-icon="mdi-cancel"
+					data-testid="invoice-cancel-confirm"
+					:loading="cancelSubmitting"
+					:disabled="!String(cancelReason || '').trim()"
+					@click="submitCancelInvoice"
+				>
+					{{ __("Cancel Invoice") }}
+				</v-btn>
+			</v-card-actions>
+		</v-card>
+	</v-dialog>
+
 	<v-dialog
 		v-model="editDialog"
 		max-width="1160px"
@@ -1576,6 +1754,16 @@
 			<v-card-text v-else-if="editInvoiceDoc">
 				<v-alert v-if="editError" type="error" variant="tonal" density="compact" class="mb-4">
 					{{ editError }}
+				</v-alert>
+				<v-alert
+					v-if="editCashCustomerBlock"
+					type="warning"
+					variant="tonal"
+					density="compact"
+					class="mb-4"
+					data-testid="invoice-edit-cash-customer-block"
+				>
+					{{ editCashCustomerBlock }}
 				</v-alert>
 				<div class="summary-grid mb-4">
 					<div class="summary-tile">
@@ -1636,17 +1824,51 @@
 				</div>
 
 				<div class="edit-form-grid mb-4">
-					<v-text-field
-						v-model="editInvoiceDoc.customer"
-						variant="outlined"
-						density="compact"
-						hide-details
-						class="edit-key-field"
-						data-edit-nav="customer"
-						data-testid="invoice-edit-customer"
-						:label="__('Customer')"
-						@update:model-value="scheduleEditPreview()"
-					/>
+					<!-- Tanami: the customer of a submitted invoice can be replaced by another one -->
+					<div class="edit-customer-field">
+						<v-autocomplete
+							v-model="editInvoiceDoc.customer"
+							:items="editCustomerOptions"
+							item-title="customer_name"
+							item-value="name"
+							variant="outlined"
+							density="compact"
+							hide-details
+							no-filter
+							class="edit-key-field"
+							data-edit-nav="customer"
+							data-testid="invoice-edit-customer"
+							:loading="editCustomerLoading"
+							:label="__('Customer')"
+							:no-data-text="editCustomerLoading ? __('Loading...') : __('No customers found')"
+							@update:search="onEditCustomerSearch"
+							@update:focused="onEditCustomerFocus"
+							@update:model-value="onEditCustomerChange"
+						>
+							<template #item="{ props, item }">
+								<v-list-item v-bind="props" :subtitle="editCustomerSubtitle(item.raw)" />
+							</template>
+							<template #append>
+								<v-btn
+									icon="mdi-account-plus"
+									size="small"
+									variant="text"
+									color="primary"
+									data-testid="invoice-edit-new-customer"
+									:title="__('New Customer')"
+									:aria-label="__('New Customer')"
+									@click.stop="openEditNewCustomer"
+								/>
+							</template>
+						</v-autocomplete>
+						<div
+							v-if="editCustomerBalanceText"
+							class="edit-customer-balance text-caption"
+							data-testid="invoice-edit-customer-balance"
+						>
+							{{ __("Customer Balance") }}: <strong>{{ editCustomerBalanceText }}</strong>
+						</div>
+					</div>
 					<v-text-field
 						v-model.number="editInvoiceDoc.discount_amount"
 						type="number"
@@ -1775,16 +1997,48 @@
 					</tbody>
 				</v-table>
 				<div class="edit-add-row mt-3">
-					<v-text-field
-						v-model="newEditItem.item_code"
-						variant="outlined"
-						density="compact"
-						hide-details
-						class="edit-key-field"
-						data-edit-nav="new-item-code"
-						data-edit-section="new-item"
-						:label="__('Item Code')"
-					/>
+					<!-- Tanami: typing part of a code or name lists the matching items -->
+					<div class="edit-item-search">
+						<v-text-field
+							v-model="newEditItem.item_code"
+							variant="outlined"
+							density="compact"
+							hide-details
+							autocomplete="off"
+							class="edit-key-field"
+							data-edit-nav="new-item-code"
+							data-edit-section="new-item"
+							data-testid="invoice-edit-new-item-code"
+							:loading="editItemSuggestLoading"
+							:label="__('Item Code or Name')"
+							@focus="reopenEditItemSuggestions"
+						/>
+						<v-menu
+							v-model="editItemSuggestOpen"
+							activator="parent"
+							location="bottom start"
+							max-height="320"
+							:open-on-click="false"
+							:close-on-content-click="false"
+						>
+							<v-list density="compact" data-testid="invoice-edit-item-suggestions">
+								<v-list-item
+									v-for="(suggestion, suggestionIndex) in editItemSuggestions"
+									:key="suggestion.item_code"
+									:active="suggestionIndex === editItemSuggestIndex"
+									:title="suggestion.item_name || suggestion.item_code"
+									:subtitle="suggestion.item_code"
+									@mousedown.prevent
+									@click="pickEditItemSuggestion(suggestion)"
+								/>
+								<v-list-item
+									v-if="!editItemSuggestions.length"
+									disabled
+									:title="__('No items found')"
+								/>
+							</v-list>
+						</v-menu>
+					</div>
 					<v-text-field
 						v-model.number="newEditItem.qty"
 						type="number"
@@ -1848,8 +2102,7 @@
 									:data-edit-row="index"
 									data-edit-col="amount"
 									data-edit-section="payments"
-									readonly
-									:label="__('Auto Adjusted')"
+									@update:model-value="onEditPaymentAmountInput(payment)"
 								/>
 							</td>
 							<td>{{ payment.account || "-" }}</td>
@@ -1901,12 +2154,12 @@ import { useToastStore } from "../../../stores/toastStore";
 import { useUIStore } from "../../../stores/uiStore";
 import { useInvoiceStore } from "../../../stores/invoiceStore";
 import { useCustomersStore } from "../../../stores/customersStore";
+import { describeLedgerBalance } from "../../../composables/pos/customer/useCustomerLedgerBalance";
 import { useEmployeeStore } from "../../../stores/employeeStore";
 import {
 	appendDebugPrintParam,
 	isDebugPrintEnabled,
 	silentPrint,
-	watchPrintWindow,
 } from "../../../plugins/print";
 import {
 	confirmDocumentPrintFallback,
@@ -2039,6 +2292,20 @@ export default {
 		editPreviewTimer: null,
 		editPreviewRequestId: 0,
 		editPreviewDirty: false,
+		editPaymentsManual: false,
+		cancellingBlockerFor: null,
+		cancelDialog: false,
+		cancelTarget: null,
+		cancelReason: "",
+		cancelSubmitting: false,
+		cancelError: "",
+		editCustomerOptions: [],
+		editCustomerLoading: false,
+		editCustomerBalance: null,
+		editCustomerIsCash: false,
+		editNewCustomerPending: false,
+		editSaleScreenCustomer: null,
+		editOriginalFullyPaid: true,
 		editPreviewLastUpdatedAt: null,
 		editError: "",
 		editInvoiceOriginal: null,
@@ -2053,8 +2320,12 @@ export default {
 			qty: 1,
 			rate: 0,
 		},
+		editItemSuggestions: [],
+		editItemSuggestOpen: false,
+		editItemSuggestIndex: -1,
+		editItemSuggestLoading: false,
 		partialStatusItems: ["All", "Partly Paid", "Unpaid", "Overdue"],
-		historyStatusItems: ["All", "Paid", "Partly Paid", "Unpaid", "Overdue", "Credit Note Issued"],
+		historyStatusItems: ["All", "Paid", "Partly Paid", "Unpaid", "Overdue", "Credit Note Issued", "Cancelled"],
 		partialHeaders: [
 			{ title: __("Invoice"), key: "name" },
 			{ title: __("Customer"), key: "customer_name" },
@@ -2245,9 +2516,14 @@ export default {
 				{ count: 0, total_paid: 0, total_outstanding: 0, overdue_count: 0 },
 			);
 		},
+		historyActiveCount() {
+			return this.filteredHistoryInvoices.filter((invoice) => !invoice.is_cancelled).length;
+		},
 		historyTotals() {
 			return this.filteredHistoryInvoices.reduce(
 				(accumulator, invoice) => {
+					// Tanami: invoices cancelled from the POS are listed but never counted
+					if (invoice.is_cancelled) return accumulator;
 					accumulator.gross += Number(invoice.grand_total || 0);
 					accumulator.paid += Number(invoice.paid_amount || 0);
 					accumulator.change_return += Number(invoice.change_amount || 0);
@@ -2323,6 +2599,29 @@ export default {
 		editSettlementDelta() {
 			return this.normalizeEditMoney(this.editCorrectedTotal - this.editOriginalPaidTotal);
 		},
+		// Tanami: balance of the customer chosen in the edit dialog, without the invoice being corrected
+		editCustomerBalanceText() {
+			if (this.editCustomerBalance === null) return "";
+			const { figure, symbol, direction } = describeLedgerBalance(
+				this.editCustomerBalance,
+				this.editSettlementCurrency,
+			);
+			return [figure, symbol, direction ? `— ${direction}` : ""].filter(Boolean).join(" ");
+		},
+		editPaymentsTotal() {
+			return this.normalizeEditMoney(
+				(this.editInvoiceDoc?.payments || []).reduce(
+					(total, payment) => total + Number(payment?.amount || 0),
+					0,
+				),
+			);
+		},
+		// Tanami: same rule as a new sale, the cash customer cannot carry an unpaid amount
+		editCashCustomerBlock() {
+			if (!this.editInvoiceDoc || !this.editCustomerIsCash) return "";
+			if (this.editPaymentsTotal >= this.editCorrectedTotal - 0.001) return "";
+			return __("Credit sale is not allowed for the cash customer, choose the customer by name");
+		},
 		editSettlementLabel() {
 			const delta = this.editSettlementDelta;
 			if (delta > 0) return __("Collect from customer");
@@ -2344,6 +2643,33 @@ export default {
 		},
 	},
 	watch: {
+		// Tanami: the rate of a new line starts from the selling price list
+		"newEditItem.item_code"(value) {
+			clearTimeout(this._newEditItemPriceTimer);
+			this._newEditItemPriceTimer = setTimeout(() => this.fetchNewEditItemPrice(), 350);
+			clearTimeout(this._editItemSearchTimer);
+			// a code taken from the list needs no second search
+			if (String(value || "").trim() === this._editItemPicked) return;
+			this._editItemPicked = null;
+			this.newEditItem.item_name = "";
+			if (!String(value || "").trim()) {
+				this.clearEditItemSuggestions();
+				return;
+			}
+			this._editItemSearchTimer = setTimeout(() => this.searchEditItems(), 250);
+		},
+		// Tanami: a customer added from the edit dialog goes on the invoice being edited,
+		// the sale screen keeps the customer it had
+		"customersStore.isUpdateCustomerDialogOpen"(open) {
+			if (open || !this.editNewCustomerPending) return;
+			this.editNewCustomerPending = false;
+			const created = this.customersStore.selectedCustomer;
+			const previous = this.editSaleScreenCustomer;
+			this.editSaleScreenCustomer = null;
+			if (!created || created === previous || !this.editInvoiceDoc) return;
+			this.customersStore.setSelectedCustomer(previous);
+			this.applyEditNewCustomer(created);
+		},
 		editDialog(value) {
 			if (!value) {
 				this.clearScheduledEditPreview();
@@ -2759,6 +3085,260 @@ export default {
 		canEditSubmittedInvoice(invoice) {
 			return Boolean(invoice?.can_edit_submitted_invoice);
 		},
+		// Tanami: returns / payment receipts of the open shift that must be cancelled
+		// before the invoice can be edited; they are cancelled one at a time
+		nextEditBlocker(invoice) {
+			const blockers = Array.isArray(invoice?.edit_blockers) ? invoice.edit_blockers : [];
+			return blockers.find((blocker) => blocker.in_open_shift) || null;
+		},
+		editBlockerLabel(invoice) {
+			const blocker = this.nextEditBlocker(invoice);
+			const count = (invoice?.edit_blockers || []).length;
+			const label = blocker?.kind === "payment" ? __("Cancel Receipt") : __("Cancel Return");
+			return count > 1 ? `${label} (${count})` : label;
+		},
+		async cancelEditBlocker(invoice) {
+			const blocker = this.nextEditBlocker(invoice);
+			if (!blocker || this.cancellingBlockerFor) return;
+			if (isOffline()) {
+				this.toastStore.show({
+					title: __("Editing submitted invoices requires an online connection"),
+					color: "warning",
+				});
+				return;
+			}
+			const question =
+				blocker.kind === "payment"
+					? __("Receipt {0} linked to invoice {1} will be cancelled. Continue?", [
+							blocker.name,
+							invoice.name,
+						])
+					: __("Return {0} linked to invoice {1} will be cancelled. Continue?", [
+							blocker.name,
+							invoice.name,
+						]);
+			if (!window.confirm(question)) return;
+			this.cancellingBlockerFor = invoice.name;
+			try {
+				await frappe.call({
+					method: "posawesome.posawesome.api.invoices.cancel_submitted_invoice_edit_blocker",
+					args: {
+						...this.editScopeArgs(invoice),
+						blocker_doctype: blocker.doctype,
+						blocker_name: blocker.name,
+					},
+					freeze: true,
+				});
+				this.toastStore.show({ title: __("{0} cancelled", [blocker.name]), color: "success" });
+				await this.refreshAll();
+			} catch (error) {
+				console.error("Error cancelling linked document:", error);
+				this.toastStore.show({
+					title: error?.message || __("Unable to cancel {0}", [blocker.name]),
+					color: "error",
+				});
+			} finally {
+				this.cancellingBlockerFor = null;
+			}
+		},
+		// Tanami: cancel a sale or return of the open shift from the POS
+		canCancelFromPos(invoice) {
+			return Boolean(invoice?.can_cancel_from_pos) && !invoice?.is_cancelled;
+		},
+		openCancelInvoice(invoice) {
+			if (!this.canCancelFromPos(invoice)) return;
+			if (isOffline()) {
+				this.toastStore.show({
+					title: __("Cancelling invoices requires an online connection"),
+					color: "warning",
+				});
+				return;
+			}
+			this.cancelTarget = invoice;
+			this.cancelReason = "";
+			this.cancelError = "";
+			this.cancelDialog = true;
+		},
+		closeCancelInvoice() {
+			this.cancelDialog = false;
+			this.cancelTarget = null;
+			this.cancelReason = "";
+			this.cancelError = "";
+		},
+		async submitCancelInvoice() {
+			const invoice = this.cancelTarget;
+			const reason = String(this.cancelReason || "").trim();
+			if (!invoice?.name || !reason || this.cancelSubmitting) return;
+			this.cancelSubmitting = true;
+			this.cancelError = "";
+			try {
+				await frappe.call({
+					method: "posawesome.posawesome.api.pos_invoice_cancel.cancel_invoice_from_pos",
+					args: { ...this.editScopeArgs(invoice), reason },
+					freeze: true,
+				});
+				this.toastStore.show({ title: __("{0} cancelled", [invoice.name]), color: "success" });
+				this.closeCancelInvoice();
+				this.detailDialog = false;
+				await this.refreshAll();
+			} catch (error) {
+				console.error("Error cancelling invoice:", error);
+				this.cancelError = this.serverErrorText(error) || __("Unable to cancel {0}", [invoice.name]);
+			} finally {
+				this.cancelSubmitting = false;
+			}
+		},
+		serverErrorText(error) {
+			try {
+				const messages = JSON.parse(error?._server_messages || error?.responseJSON?._server_messages || "[]");
+				const texts = messages
+					.map((entry) => {
+						try {
+							return JSON.parse(entry).message;
+						} catch {
+							return entry;
+						}
+					})
+					.filter(Boolean);
+				if (texts.length) return texts.join(" ").replace(/<[^>]+>/g, " ").trim();
+			} catch {
+				// fall through to the plain message
+			}
+			return error?.message || "";
+		},
+		async loadCancelledInvoices(doctypes) {
+			if (this.isSupervisorScope() && this.resolveSupervisorProfileScope() !== this.posProfile?.name) {
+				return [];
+			}
+			try {
+				const results = await Promise.all(
+					doctypes.map(async (doctype) => {
+						const { message } = await frappe.call({
+							method: "posawesome.posawesome.api.pos_invoice_cancel.list_cancelled_invoices",
+							args: {
+								doctype,
+								pos_profile: this.posProfile?.name,
+								company: this.posProfile?.company || null,
+							},
+						});
+						return Array.isArray(message) ? message : [];
+					}),
+				);
+				return results.flat();
+			} catch (error) {
+				console.warn("Unable to load cancelled invoices", error);
+				return [];
+			}
+		},
+		// Tanami: customer picker of the invoice edit dialog
+		editCustomerSubtitle(customer) {
+			return [customer?.name !== customer?.customer_name ? customer?.name : "", customer?.mobile_no]
+				.filter(Boolean)
+				.join(" · ");
+		},
+		setEditCustomerOptions(customers) {
+			const current = this.editInvoiceDoc?.customer;
+			const options = Array.isArray(customers) ? [...customers] : [];
+			if (current && !options.some((customer) => customer.name === current)) {
+				options.unshift({
+					name: current,
+					customer_name: this.editInvoiceDoc.customer_name || current,
+				});
+			}
+			this.editCustomerOptions = options;
+		},
+		// the whole customer list of the profile when nothing is typed, as on a new sale
+		async loadEditCustomers(term = "") {
+			const seq = (this._editCustomerSearchSeq = (this._editCustomerSearchSeq || 0) + 1);
+			this.editCustomerLoading = true;
+			try {
+				const { message } = await frappe.call({
+					method: "tanami_workshop.party.search_pos_customers",
+					args: {
+						pos_profile: JSON.stringify({
+							name: this.posProfile?.name,
+							customer_groups: this.posProfile?.customer_groups || [],
+						}),
+						search_term: term,
+					},
+				});
+				if (seq === this._editCustomerSearchSeq && this.editInvoiceDoc) {
+					this.setEditCustomerOptions(message);
+				}
+			} catch (error) {
+				console.error("Error searching customers:", error);
+			} finally {
+				if (seq === this._editCustomerSearchSeq) this.editCustomerLoading = false;
+			}
+		},
+		onEditCustomerSearch(search) {
+			clearTimeout(this._editCustomerSearchTimer);
+			const term = String(search || "").trim();
+			// the text of the selected customer is not a search
+			if (term && term === String(this.editInvoiceDoc?.customer_name || "").trim()) return;
+			if (term === (this._editCustomerTerm || "")) return;
+			this._editCustomerSearchTimer = setTimeout(() => {
+				this._editCustomerTerm = term;
+				this.loadEditCustomers(term);
+			}, 250);
+		},
+		onEditCustomerFocus(focused) {
+			// a list narrowed by an earlier search opens complete again
+			if (focused && this._editCustomerTerm) {
+				this._editCustomerTerm = "";
+				this.loadEditCustomers("");
+			}
+		},
+		onEditCustomerChange(customer) {
+			if (!this.editInvoiceDoc) return;
+			if (!customer) {
+				// an invoice always has a customer: clearing the field puts the original one back
+				this.editInvoiceDoc.customer = this.editInvoiceOriginal?.customer || this.editInvoiceDoc.customer;
+				this.refreshEditCustomerBalance();
+				return;
+			}
+			const picked = this.editCustomerOptions.find((option) => option.name === customer);
+			this.editInvoiceDoc.customer_name = picked?.customer_name || customer;
+			this.refreshEditCustomerBalance();
+			this.scheduleEditPreview();
+		},
+		async refreshEditCustomerBalance() {
+			const customer = this.editInvoiceDoc?.customer;
+			const seq = (this._editCustomerBalanceSeq = (this._editCustomerBalanceSeq || 0) + 1);
+			this.editCustomerBalance = null;
+			this.editCustomerIsCash = false;
+			if (!customer) return;
+			try {
+				const { message } = await frappe.call({
+					method: "tanami_workshop.pos_rules.get_pos_customer_balance",
+					args: {
+						customer,
+						company: this.editInvoiceDoc.company || this.posProfile?.company,
+						exclude_voucher: this.editInvoiceDoc.name,
+					},
+				});
+				if (seq !== this._editCustomerBalanceSeq || this.editInvoiceDoc?.customer !== customer) return;
+				this.editCustomerBalance = Number(message?.balance || 0);
+				this.editCustomerIsCash = Boolean(message?.is_cash_customer);
+			} catch (error) {
+				console.warn("Unable to load customer balance", error);
+			}
+		},
+		openEditNewCustomer() {
+			if (!this.editInvoiceDoc || typeof this.customersStore?.openUpdateCustomerDialog !== "function") return;
+			this.editSaleScreenCustomer = this.customersStore.selectedCustomer || null;
+			this.editNewCustomerPending = true;
+			this.customersStore.openUpdateCustomerDialog(null);
+		},
+		applyEditNewCustomer(name) {
+			const created = (this.customersStore.customers || []).find((customer) => customer.name === name);
+			this.editInvoiceDoc.customer = name;
+			this.editInvoiceDoc.customer_name = created?.customer_name || name;
+			this._editCustomerTerm = "";
+			this.loadEditCustomers("");
+			this.refreshEditCustomerBalance();
+			this.scheduleEditPreview();
+		},
 		sortInvoicesByLatest(items) {
 			return [...items].sort(
 				(left, right) => this.invoiceSortValue(right) - this.invoiceSortValue(left),
@@ -2789,6 +3369,7 @@ export default {
 		},
 		statusColor(status) {
 			const value = String(status || "").toLowerCase();
+			if (value === "cancelled") return "error";
 			if (value === "paid") return "success";
 			if (value.includes("partly")) return "warning";
 			if (value.includes("overdue")) return "error";
@@ -2797,6 +3378,7 @@ export default {
 		},
 		toneFromStatus(status) {
 			const value = String(status || "").toLowerCase();
+			if (value === "cancelled") return "error";
 			if (value === "paid") return "success";
 			if (value.includes("partly")) return "warning";
 			if (value.includes("overdue")) return "error";
@@ -3132,7 +3714,11 @@ export default {
 						return Array.isArray(message) ? message.map((entry) => ({ ...entry, doctype })) : [];
 					}),
 				);
-				this.historyInvoices = results.flat();
+				const cancelled =
+					typeof this.loadCancelledInvoices === "function"
+						? await this.loadCancelledInvoices(doctypes)
+						: [];
+				this.historyInvoices = [...results.flat(), ...cancelled];
 				if (typeof this.refreshRepairCandidates === "function") {
 					await this.refreshRepairCandidates(this.historyInvoices);
 				}
@@ -3206,6 +3792,10 @@ export default {
 			this.editPreviewDoc = null;
 			this.editEligibility = null;
 			this.newEditItem = { item_code: "", qty: 1, rate: 0 };
+			this.editCustomerOptions = [];
+			this.editCustomerBalance = null;
+			this.editCustomerIsCash = false;
+			this.editNewCustomerPending = false;
 		},
 		editScopeArgs(invoice) {
 			return {
@@ -3234,15 +3824,31 @@ export default {
 			if (!Array.isArray(this.editInvoiceDoc.payments)) {
 				this.editInvoiceDoc.payments = [];
 			}
-			if (!this.editInvoiceDoc.payments.length) {
-				const profilePayment = Array.isArray(this.posProfile?.payments)
-					? this.posProfile.payments.find((payment) => payment?.mode_of_payment)
-					: null;
+			// Tanami: one row per mode of payment of the profile, so the payment can be
+			// moved to another mode or split by typing the amounts
+			const profilePayments = Array.isArray(this.posProfile?.payments)
+				? this.posProfile.payments.filter((payment) => payment?.mode_of_payment)
+				: [];
+			const present = new Set(this.editInvoiceDoc.payments.map((payment) => payment.mode_of_payment));
+			profilePayments.forEach((profilePayment) => {
+				if (present.has(profilePayment.mode_of_payment)) return;
 				this.editInvoiceDoc.payments.push({
-					mode_of_payment: profilePayment?.mode_of_payment || "Cash",
-					account: profilePayment?.account || "",
-					type: profilePayment?.type || "Cash",
-					default: profilePayment?.default || 1,
+					mode_of_payment: profilePayment.mode_of_payment,
+					account: profilePayment.account || "",
+					type: profilePayment.type || "",
+					default: profilePayment.default || 0,
+					amount: 0,
+					base_amount: 0,
+					currency: this.editInvoiceDoc.currency || this.posProfile?.currency,
+					conversion_rate: Number(this.editInvoiceDoc.conversion_rate || 1),
+				});
+			});
+			if (!this.editInvoiceDoc.payments.length) {
+				this.editInvoiceDoc.payments.push({
+					mode_of_payment: "Cash",
+					account: "",
+					type: "Cash",
+					default: 1,
 					amount: 0,
 					base_amount: 0,
 					currency: this.editInvoiceDoc.currency || this.posProfile?.currency,
@@ -3251,6 +3857,17 @@ export default {
 			}
 			return this.editInvoiceDoc.payments;
 		},
+		// Tanami: once an amount is typed the payments are the cashier's; until then a
+		// fully paid invoice stays fully paid as its total changes
+		onEditPaymentAmountInput(payment) {
+			this.editPaymentsManual = true;
+			payment.base_amount = this.normalizeEditMoney(
+				Number(payment.amount || 0) *
+					Number(payment.conversion_rate || this.editInvoiceDoc?.conversion_rate || 1),
+			);
+			this.editPreviewDirty = true;
+			this.scheduleEditPreview();
+		},
 		syncEditPaymentsToCorrectedTotal(totalOverride = null, previewDoc = null) {
 			if (!this.editInvoiceDoc) return 0;
 			const targetTotal = this.normalizeEditMoney(
@@ -3258,14 +3875,17 @@ export default {
 			);
 			const payments = this.ensureEditPaymentRows();
 			if (!payments.length) return targetTotal;
-			const primaryIndex = Math.max(
-				0,
-				payments.findIndex((payment) =>
-					String(payment?.mode_of_payment || "")
-						.toLowerCase()
-						.includes("cash"),
-				),
-			);
+			if (this.editPaymentsManual || !this.editOriginalFullyPaid) {
+				// typed by the cashier, or a credit sale: amounts are left as they are
+				return targetTotal;
+			}
+			// the mode that carried the payment keeps it
+			let primaryIndex = 0;
+			payments.forEach((payment, index) => {
+				if (Number(payment?.amount || 0) > Number(payments[primaryIndex]?.amount || 0)) {
+					primaryIndex = index;
+				}
+			});
 			payments.forEach((payment, index) => {
 				const amount = index === primaryIndex ? targetTotal : 0;
 				payment.amount = amount;
@@ -3507,16 +4127,28 @@ export default {
 		handleEditModalClick(event) {
 			const target = event.target?.closest?.("[data-edit-nav]");
 			if (target) {
-				this.setEditKeyboardTarget(target);
-				this.editKeyboardEditing = Boolean(
+				const editing = Boolean(
 					this.editFocusableElement(target)?.matches(
 						"input, textarea, select, [contenteditable='true']",
 					),
 				);
+				// a clicked field keeps the focus the click gave it: moving focus to the
+				// dialog here made typing possible only while the mouse button was held
+				this.setEditKeyboardTarget(target, { focusRoot: !editing });
+				this.editKeyboardEditing = editing;
 			}
 		},
 		handleEditModalKeydown(event) {
 			if (!this.editDialog || this.editLoading) return;
+			if (this.handleEditItemSuggestKeydown(event)) return;
+			// Tanami: the customer picker moves through its own list and picks with Enter
+			if (
+				event.target?.closest?.("[data-edit-nav='customer']") &&
+				["ArrowUp", "ArrowDown", "Enter"].includes(event.key) &&
+				!(event.ctrlKey || event.metaKey)
+			) {
+				return;
+			}
 			if ((event.ctrlKey || event.metaKey) && event.key === "Enter") {
 				event.preventDefault();
 				this.submitEditInvoice();
@@ -3588,6 +4220,12 @@ export default {
 					args: this.editScopeArgs(invoice),
 				});
 				this.editInvoiceDoc = this.cloneForEdit(message?.invoice || {});
+				this.setEditCustomerOptions([]);
+				this._editCustomerTerm = "";
+				this.loadEditCustomers("");
+				this.refreshEditCustomerBalance();
+				this.editPaymentsManual = false;
+				this.editOriginalFullyPaid = Number(message?.invoice?.outstanding_amount || 0) <= 0.0005;
 				this.editEligibility = message?.metadata || null;
 				if (!Array.isArray(this.editInvoiceDoc.items)) this.editInvoiceDoc.items = [];
 				if (!Array.isArray(this.editInvoiceDoc.payments)) this.editInvoiceDoc.payments = [];
@@ -3620,6 +4258,125 @@ export default {
 			this.scheduleEditPreview();
 			return true;
 		},
+		clearEditItemSuggestions() {
+			this._editItemSearchSeq = (this._editItemSearchSeq || 0) + 1;
+			this.editItemSuggestions = [];
+			this.editItemSuggestOpen = false;
+			this.editItemSuggestIndex = -1;
+			this.editItemSuggestLoading = false;
+		},
+		isEditItemSearchFocused() {
+			return Boolean(document.activeElement?.closest?.("[data-edit-nav='new-item-code']"));
+		},
+		reopenEditItemSuggestions() {
+			if (this.editItemSuggestions.length && !this._editItemPicked) {
+				this.editItemSuggestOpen = true;
+			}
+		},
+		async searchEditItems() {
+			const search = String(this.newEditItem?.item_code || "").trim();
+			if (!search || !this.editInvoiceOriginal?.name || isOffline()) return;
+			const seq = (this._editItemSearchSeq = (this._editItemSearchSeq || 0) + 1);
+			this.editItemSuggestLoading = true;
+			try {
+				const { message } = await frappe.call({
+					method: "posawesome.posawesome.api.submitted_invoice_edits.search_submitted_invoice_edit_items",
+					args: { ...this.editScopeArgs(this.editInvoiceOriginal), search },
+				});
+				// a newer search, or a cleared field, makes this answer stale
+				if (seq !== this._editItemSearchSeq) return;
+				this.editItemSuggestions = Array.isArray(message) ? message : [];
+				this.editItemSuggestIndex = -1;
+				this.editItemSuggestOpen = this.isEditItemSearchFocused();
+			} catch (error) {
+				console.error("Error searching items:", error);
+			} finally {
+				if (seq === this._editItemSearchSeq) this.editItemSuggestLoading = false;
+			}
+		},
+		pickEditItemSuggestion(suggestion) {
+			if (!suggestion?.item_code) return false;
+			clearTimeout(this._editItemSearchTimer);
+			this._editItemSearchSeq = (this._editItemSearchSeq || 0) + 1;
+			this.editItemSuggestLoading = false;
+			this._editItemPicked = suggestion.item_code;
+			this.newEditItem.item_code = suggestion.item_code;
+			this.newEditItem.item_name = suggestion.item_name || "";
+			this.editItemSuggestOpen = false;
+			this.editItemSuggestIndex = -1;
+			// same code as before triggers no watcher, so ask for the price here too
+			this.fetchNewEditItemPrice();
+			this.$nextTick(() => {
+				this.focusEditFieldByPredicate((element) => element.dataset.editNav === "new-item-qty");
+			});
+			return true;
+		},
+		handleEditItemSuggestKeydown(event) {
+			if (!event.target?.closest?.("[data-edit-nav='new-item-code']")) return false;
+			const suggestions = this.editItemSuggestions;
+			if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+				// the list is moved through from here; the menu must not take the focus
+				event.preventDefault();
+				event.stopPropagation();
+				if (!suggestions.length) return true;
+				if (!this.editItemSuggestOpen) {
+					this.editItemSuggestOpen = true;
+					return true;
+				}
+				const step = event.key === "ArrowDown" ? 1 : -1;
+				const count = suggestions.length;
+				this.editItemSuggestIndex =
+					this.editItemSuggestIndex < 0
+						? step > 0
+							? 0
+							: count - 1
+						: (this.editItemSuggestIndex + step + count) % count;
+				return true;
+			}
+			if (!this.editItemSuggestOpen) return false;
+			if (event.key === "Escape") {
+				event.preventDefault();
+				event.stopPropagation();
+				this.editItemSuggestOpen = false;
+				return true;
+			}
+			if (event.key === "Enter" && !(event.ctrlKey || event.metaKey)) {
+				const typed = String(this.newEditItem?.item_code || "")
+					.trim()
+					.toLowerCase();
+				const exact = suggestions.some(
+					(suggestion) => String(suggestion.item_code).toLowerCase() === typed,
+				);
+				const picked =
+					suggestions[this.editItemSuggestIndex] || (exact ? null : suggestions[0]);
+				if (picked) {
+					event.preventDefault();
+					event.stopPropagation();
+					this.pickEditItemSuggestion(picked);
+					return true;
+				}
+			}
+			if (event.key === "Enter" || event.key === "Tab") this.editItemSuggestOpen = false;
+			return false;
+		},
+		async fetchNewEditItemPrice() {
+			const itemCode = String(this.newEditItem?.item_code || "").trim();
+			if (!itemCode || !this.editInvoiceOriginal?.name || isOffline()) return;
+			try {
+				const { message } = await frappe.call({
+					method: "posawesome.posawesome.api.submitted_invoice_edits.get_submitted_invoice_edit_item_price",
+					args: { ...this.editScopeArgs(this.editInvoiceOriginal), item_code: itemCode },
+				});
+				// the code may have changed while the price was on its way
+				if (String(this.newEditItem?.item_code || "").trim() !== itemCode) return;
+				if (Number(message?.price_list_rate) > 0) {
+					this.newEditItem.rate = Number(message.price_list_rate);
+					this.newEditItem.item_name = message.item_name;
+				}
+			} catch (error) {
+				console.error("Error loading item price:", error);
+			}
+		},
 		addEditItem() {
 			const itemCode = String(this.newEditItem?.item_code || "").trim();
 			if (!itemCode) {
@@ -3629,7 +4386,7 @@ export default {
 			if (!Array.isArray(this.editInvoiceDoc.items)) this.editInvoiceDoc.items = [];
 			this.editInvoiceDoc.items.push({
 				item_code: itemCode,
-				item_name: itemCode,
+				item_name: this.newEditItem.item_name || itemCode,
 				qty: Number(this.newEditItem.qty || 1),
 				rate: Number(this.newEditItem.rate || 0),
 				discount_percentage: 0,
@@ -3725,6 +4482,10 @@ export default {
 		async submitEditInvoice() {
 			if (!this.editInvoiceDoc?.name || this.editSubmitting) return;
 			this.clearScheduledEditPreview();
+			if (this.editCashCustomerBlock) {
+				this.toastStore.show({ title: this.editCashCustomerBlock, color: "error" });
+				return;
+			}
 			if (isOffline()) {
 				this.toastStore.show({
 					title: __("Editing submitted invoices requires an online connection"),
@@ -3770,6 +4531,13 @@ export default {
 					title: __("Corrected invoice {0} submitted", [amendedName]),
 					color: "success",
 				});
+				// Tanami: the corrected invoice is printed straight away
+				if (message?.name) {
+					this.printInvoice({
+						name: message.name,
+						doctype: message.doctype || this.editInvoiceDoc.doctype,
+					}).catch((error) => console.warn("Unable to print corrected invoice", error));
+				}
 				this.closeEditInvoice();
 				await this.refreshAll();
 			} catch (error) {
@@ -3951,8 +4719,9 @@ export default {
 				silentPrint(url, printOptions);
 				return;
 			}
-			const printWindow = window.open(url, "Print");
-			if (printWindow) watchPrintWindow(printWindow, printOptions);
+			// Tanami: reprint through a hidden frame, one press and no extra window
+			// (printview's own trigger is off so the page is sent to the printer once)
+			silentPrint(url.replace("trigger_print=1", "trigger_print=0"), printOptions);
 		},
 		async shareInvoice(invoice) {
 			if (this.isSharingInvoice) return;
@@ -4528,6 +5297,20 @@ export default {
 
 .edit-add-row {
 	grid-template-columns: minmax(180px, 1fr) minmax(90px, 120px) minmax(110px, 140px) auto;
+}
+
+.edit-customer-field {
+	min-width: 0;
+}
+
+.edit-customer-balance {
+	margin-top: 2px;
+	padding-inline-start: 4px;
+	color: rgba(var(--v-theme-on-surface), 0.7);
+}
+
+.edit-item-search {
+	min-width: 0;
 }
 
 .edit-invoice-table {

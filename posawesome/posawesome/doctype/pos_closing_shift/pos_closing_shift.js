@@ -44,6 +44,8 @@ frappe.ui.form.on("POS Closing Shift", {
 						mode_of_payment: detail.mode_of_payment,
 						opening_amount: detail.amount || 0,
 						expected_amount: detail.amount || 0,
+						opening_amount_in_currency: detail.amount || 0,
+						expected_amount_in_currency: detail.amount || 0,
 					});
 				});
 			});
@@ -83,6 +85,11 @@ frappe.ui.form.on("POS Closing Shift", {
 frappe.ui.form.on("POS Closing Shift Detail", {
 	closing_amount: (frm, cdt, cdn) => {
 		const row = locals[cdt][cdn];
+		// keep the tender-currency amount in step, the server derives closing_amount from it
+		const expected_in_currency = flt(row.expected_amount_in_currency);
+		const rate = expected_in_currency ? Math.abs(flt(row.expected_amount) / expected_in_currency) : 1;
+		row.closing_amount_in_currency = flt(row.closing_amount) / rate;
+		frm.refresh_field("payment_reconciliation");
 		frappe.model.set_value(cdt, cdn, "difference", flt(row.expected_amount - row.closing_amount));
 	},
 });
@@ -172,6 +179,13 @@ async function add_to_payments(d, frm, conversion_rate) {
 		}
 	});
 
+	// Change booked to an account other than the cash drawer never left the drawer.
+	const cash_account = await get_cash_account(frm);
+	const change_account = d.account_for_change_amount;
+	if (cash_account && change_account && change_account !== cash_account) {
+		return;
+	}
+
 	const changeRows = Array.isArray(d.posa_change_returns) ? d.posa_change_returns : [];
 	if (changeRows.length) {
 		changeRows.forEach((row) => {
@@ -210,6 +224,7 @@ function add_pos_payment_to_payments(p, frm) {
 		let amount = Math.abs(get_base_value(p, "paid_amount", "base_paid_amount"));
 		const multiplier = p.payment_type === "Pay" ? -1 : 1;
 		payment.expected_amount += flt(multiplier * amount);
+		payment.expected_amount_in_currency = flt(payment.expected_amount_in_currency) + flt(multiplier * amount);
 	} else {
 		frm.add_child("payment_reconciliation", {
 			mode_of_payment: p.mode_of_payment,
@@ -292,6 +307,20 @@ const get_cash_mode_of_payment = async (frm) => {
 	}
 
 	return frm.__cashModeCache.value;
+};
+
+const get_cash_account = async (frm) => {
+	const key = frm.doc.pos_opening_shift;
+
+	if (!frm.__cashAccountCache || frm.__cashAccountCache.key !== key) {
+		const r = await frappe.call({
+			method: "posawesome.posawesome.doctype.pos_closing_shift.pos_closing_shift.get_cash_account_for_shift",
+			args: { pos_opening_shift: key },
+		});
+		frm.__cashAccountCache = { key, value: r.message || null };
+	}
+
+	return frm.__cashAccountCache.value;
 };
 
 const get_conversion_rate = (doc) =>

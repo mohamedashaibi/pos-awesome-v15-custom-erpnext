@@ -86,4 +86,29 @@ describe("useScannerInput", () => {
 		await vi.advanceTimersByTimeAsync(32);
 		expect(onScan).toHaveBeenCalledTimes(2);
 	});
+
+	it("adds a repeat scan of the same barcode once the active one finishes", async () => {
+		const finishers: Array<() => void> = [];
+		const onScan = vi.fn(
+			() =>
+				new Promise<void>((resolve) => {
+					finishers.push(resolve);
+				}),
+		);
+		const scanner = useScannerInput({ onScan });
+
+		scanner.onBarcodeScanned("123456789012");
+		await vi.advanceTimersByTimeAsync(32);
+		expect(onScan).toHaveBeenCalledTimes(1);
+
+		// Cashier scans the same product again while the first is still being added
+		now += 600;
+		scanner.onBarcodeScanned("123456789012");
+		await vi.advanceTimersByTimeAsync(32);
+		expect(onScan).toHaveBeenCalledTimes(1);
+
+		finishers[0]?.();
+		await vi.advanceTimersByTimeAsync(32);
+		expect(onScan).toHaveBeenCalledTimes(2);
+	});
 });

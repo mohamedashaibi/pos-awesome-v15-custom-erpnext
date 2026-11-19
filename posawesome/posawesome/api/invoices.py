@@ -43,6 +43,7 @@ from posawesome.posawesome.api.invoice_processing.payment import _create_change_
 from posawesome.posawesome.api.invoice_processing.data import get_last_invoice_rates
 from posawesome.posawesome.api.utils import log_perf_event
 from posawesome.posawesome.api.submitted_invoice_edits import (
+    cancel_submitted_invoice_edit_blocker,
     get_submitted_invoice_for_edit,
     list_submitted_invoices,
     preview_submitted_invoice_edit,

@@ -12,9 +12,20 @@
 		v-memo="memoDeps"
 	>
 		<template v-for="column in visibleColumns" :key="column.key">
+			<!-- Row Number Column -->
+			<td
+				v-if="column.key === 'row_no'"
+				class="text-center posa-cart-item-row__number"
+				role="gridcell"
+				data-column-key="row_no"
+			>
+				{{ rowNumber }}
+			</td>
+
 			<!-- Item Name Column -->
-			<td v-if="column.key === 'item_name'" v-bind="getCellAttrs('item_name', 'text-start')">
+			<td v-else-if="column.key === 'item_name'" v-bind="getCellAttrs('item_name', 'text-start')">
 				<div class="posa-cart-item-row__item-cell">
+					<span v-if="item.item_code" class="posa-cart-item-row__item-code">{{ item.item_code }}</span>
 					<span class="posa-cart-item-row__item-name">{{ item.item_name }}</span>
 					<v-chip v-if="item.is_bundle" color="secondary" size="x-small" class="ml-1">
 						{{ __("Bundle") }}
@@ -475,6 +486,11 @@ const props = defineProps({
 		type: Number,
 		default: -1,
 	},
+	rowNumber: {
+		type: Number,
+		default: 0,
+	},
+	recentlyChanged: Boolean,
 	keyboardMode: {
 		type: String,
 		default: "inactive",
@@ -558,6 +574,8 @@ const memoDeps = computed(() => {
 		props.item.price_list_rate,
 		props.isExpanded,
 		props.rowIndex,
+		props.rowNumber,
+		props.recentlyChanged,
 		props.keyboardMode,
 		props.activeRow,
 		props.activeCellKey,
@@ -607,6 +625,7 @@ const rowClasses = computed(() => ({
 	"posa-cart-item-row--keyboard-row": props.activeRow && props.keyboardMode === "row",
 	"posa-cart-item-row--keyboard-cell": props.activeRow && props.keyboardMode === "cell",
 	"posa-cart-item-row--loss-risk": Boolean(lossRisk.value),
+	"posa-cart-item-row--recent": props.recentlyChanged,
 }));
 
 function isKeyboardCellActive(key) {
@@ -1095,6 +1114,23 @@ td[data-column-key="item_name"] {
 	width: 100%;
 	height: auto;
 	text-align: left;
+}
+
+.posa-cart-item-row__item-code {
+	display: inline-flex;
+	align-items: center;
+	flex: 0 0 auto;
+	padding: 2px 8px;
+	border-radius: 6px;
+	background: rgba(var(--v-theme-primary), 0.12);
+	color: rgb(var(--v-theme-primary));
+	border: 1px solid rgba(var(--v-theme-primary), 0.35);
+	font-size: 0.9em;
+	font-weight: 700;
+	line-height: 1.3;
+	white-space: nowrap;
+	direction: ltr;
+	unicode-bidi: isolate;
 }
 
 .posa-cart-item-row__item-name {

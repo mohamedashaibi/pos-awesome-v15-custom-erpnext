@@ -1,3 +1,4 @@
+import { customerLedgerBalance } from "../customer/useCustomerLedgerBalance";
 import { unref, type Ref, type ComputedRef } from "vue";
 import invoiceService from "../../../services/invoiceService";
 import { isApiEnvelopeError, unwrapApiResult } from "../../../services/api";
@@ -68,6 +69,7 @@ export interface SubmissionCallbacks {
 			doctype?: string;
 			waitForPostSubmitPayments?: boolean;
 			waitForInvoiceProcessing?: boolean;
+			fromScreen?: boolean;
 		},
 	) => void;
 	onFinishNavigation?: (_success: boolean) => void;
@@ -737,6 +739,28 @@ export function usePaymentSubmission(options: PaymentSubmissionOptions) {
 					)
 				: false);
 
+		// Tanami: a customer is mandatory, and the walk-in cash customer can neither
+		// buy on credit nor keep change as a balance (the server checks the same)
+		if (!doc.customer) {
+			throw new Error(__("Customer must be selected before completing the sale"));
+		}
+		if (
+			!doc.is_return &&
+			customerLedgerBalance.customer === doc.customer &&
+			customerLedgerBalance.isCashCustomer
+		) {
+			if (isCreditSale || effective_total_payments < invoice_total - 0.001) {
+				throw new Error(
+					__("Credit sale is not allowed for the cash customer, choose the customer by name"),
+				);
+			}
+			if (formatFloat(unref(creditChange) || 0, prec) > 0) {
+				throw new Error(
+					__("A credit balance cannot be kept for the cash customer, choose the customer by name"),
+				);
+			}
+		}
+
 		// 2. Validate total payments
 		if (
 			isCreditSale &&
@@ -1336,18 +1360,20 @@ export function usePaymentSubmission(options: PaymentSubmissionOptions) {
 			}
 
 			// Success
-			if (
-				print &&
-				onPrint &&
-				!waitForInvoiceProcessing &&
-				!hasPostSubmitPaymentWork
-			) {
-				onPrint(submittedDocument, {
-					name: responseInvoiceName,
-					doctype: submittedDoctype,
-					waitForPostSubmitPayments: hasPostSubmitPaymentWork,
-					waitForInvoiceProcessing,
-				});
+			// Tanami: the receipt is printed at once. While the invoice is still being
+			// submitted in the background it is rendered from the data on screen.
+			if (print && onPrint) {
+				const printFromScreen = waitForInvoiceProcessing && !wasSubmitted;
+				onPrint(
+					printFromScreen
+						? { ...submittedDocument, ...submissionDoc, name: responseInvoiceName, doctype: submittedDoctype }
+						: submittedDocument,
+					{
+						name: responseInvoiceName,
+						doctype: submittedDoctype,
+						fromScreen: printFromScreen,
+					},
+				);
 			}
 
 			// Reset local state vars
@@ -1491,7 +1517,8 @@ export function usePaymentSubmission(options: PaymentSubmissionOptions) {
 				onScheduleBackgroundCheck({
 					name: responseInvoiceName,
 					doctype: submittedDoctype,
-					print,
+					// already printed above
+					print: false,
 					waitForPostSubmitPayments: hasPostSubmitPaymentWork,
 					waitForInvoiceProcessing,
 				});

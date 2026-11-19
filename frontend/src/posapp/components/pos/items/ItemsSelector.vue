@@ -522,6 +522,16 @@ const flyConfig = reactive({ speed: 0.6, easing: "ease-in-out" });
 
 // 3. Computed Properties
 const pos_profile = computed(() => (itemsIntegration.posProfile.value || {}) as any);
+// Honour the profile's "Default Card View" whenever a profile loads
+watch(
+	() => pos_profile.value?.name,
+	(name) => {
+		if (name) {
+			items_view.value = parseBooleanSetting(pos_profile.value?.posa_default_card_view) ? "card" : "list";
+		}
+	},
+	{ immediate: true },
+);
 const usesLimitSearch = computed(() =>
 	parseBooleanSetting(pos_profile.value?.posa_use_limit_search ?? pos_profile.value?.pose_use_limit_search),
 );
@@ -920,6 +930,7 @@ const { getItemRateInfo } = useItemRateInfo({
 
 const {
 	isOverflowing,
+	itemsContainerRef: itemsContainer,
 	cardColumns,
 	cardRowHeight,
 	cardSlotHeight,

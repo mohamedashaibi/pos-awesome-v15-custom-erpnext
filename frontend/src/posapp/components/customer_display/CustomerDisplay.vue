@@ -205,7 +205,7 @@ const formatCurrency = (value: number) => {
 }
 
 .display-meta {
-	text-align: right;
+	text-align: end;
 	color: #e2e8f0;
 	font-size: clamp(13px, 1.1vw, 16px);
 }
@@ -248,7 +248,7 @@ const formatCurrency = (value: number) => {
 .display-table th:nth-child(2),
 .display-table th:nth-child(3),
 .display-table th:nth-child(4) {
-	text-align: right;
+	text-align: end;
 }
 
 .display-empty-state {
@@ -300,7 +300,7 @@ const formatCurrency = (value: number) => {
 	}
 
 	.display-meta {
-		text-align: left;
+		text-align: start;
 	}
 
 	.display-table th,

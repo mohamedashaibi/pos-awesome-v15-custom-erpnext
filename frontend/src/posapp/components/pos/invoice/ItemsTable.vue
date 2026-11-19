@@ -12,7 +12,8 @@
 		@dragenter="onDragEnterFromSelector"
 		@dragleave="onDragLeaveFromSelector"
 	>
-		<v-data-table-virtual
+		<component
+			:is="useFallbackTable ? 'v-data-table' : 'v-data-table-virtual'"
 			ref="virtualTable"
 			:headers="responsiveHeaders"
 			:items="displayItems"
@@ -20,7 +21,7 @@
 			item-value="posa_row_id"
 			class="posa-cart-table elevation-2 pos-themed-card"
 			:class="[tableClasses, { 'posa-cart-table--counter-grid': counterGrid }]"
-			:items-per-page="virtualScrollConfig.itemsPerPage"
+			:items-per-page="useFallbackTable ? -1 : virtualScrollConfig.itemsPerPage"
 			:item-height="virtualScrollConfig.itemHeight"
 			:buffer-size="virtualScrollConfig.bufferSize"
 			fixed-header
@@ -54,6 +55,8 @@
 					v-else
 					:item="item"
 					:row-index="getItemIndex(item)"
+					:row-number="getRowNumber(item)"
+					:recently-changed="recentRowId === item.posa_row_id"
 					:visible-columns="finalVisibleColumns"
 					:posProfile="pos_profile"
 					:isReturnInvoice="isReturnInvoice"
@@ -93,7 +96,7 @@
 					@click="handleRowClick($event, item)"
 				/>
 			</template>
-		</v-data-table-virtual>
+		</component>
 
 		<BatchSerialSelectionDialog
 			v-model="batchSerialDialog"
@@ -181,6 +184,7 @@ import { useRtl } from "../../../composables/core/useRtl";
 import {
 	activateCartGridCell,
 	ensureCartGridRowRendered,
+	getCartGridRow,
 	getAdjacentCartGridColumnKey,
 	getCartGridCellTarget,
 	focusCartItemField,
@@ -855,6 +859,162 @@ const getSelectedGridItem = () => {
 	return rowIndex >= 0 ? items.value?.[rowIndex] || null : null;
 };
 
+// Safety net: some browsers end up with cart lines in the invoice but no rows drawn by
+// the virtual table. Detect that, fall back to the plain table and report what we saw.
+const useFallbackTable = ref(false);
+const renderCheckReported = { virtual: false, fallback: false };
+let renderCheckTimer: number | null = null;
+
+const describeCartDom = () => {
+	const container = tableContainer.value;
+	const wrapper = container?.querySelector(".v-table__wrapper") as HTMLElement | null;
+	const tbody = container?.querySelector("tbody") as HTMLElement | null;
+	const box = (el: Element | null | undefined) => {
+		if (!el) return null;
+		const rect = el.getBoundingClientRect();
+		const style = window.getComputedStyle(el);
+		return {
+			w: Math.round(rect.width),
+			h: Math.round(rect.height),
+			top: Math.round(rect.top),
+			display: style.display,
+			visibility: style.visibility,
+			overflow: style.overflowY,
+		};
+	};
+	return {
+		mode: useFallbackTable.value ? "fallback" : "virtual",
+		items: items.value.length,
+		search: props.itemSearch || "",
+		counterGrid: props.counterGrid,
+		headers: responsiveHeaders.value.map((header: any) => header.key),
+		dpr: window.devicePixelRatio,
+		viewport: [window.innerWidth, window.innerHeight],
+		dir: document.documentElement.dir,
+		container: box(container),
+		table: box(container?.querySelector(".posa-cart-table")),
+		wrapper: box(wrapper),
+		wrapperScroll: wrapper ? [wrapper.scrollTop, wrapper.scrollHeight, wrapper.clientHeight] : null,
+		tbodyBox: box(tbody),
+		tbody: Array.from(tbody?.children || [])
+			.slice(0, 12)
+			.map((child) => ({
+				cls: (child.className || "").toString().slice(0, 60),
+				style: child.getAttribute("style") || "",
+				offsetTop: (child as HTMLElement).offsetTop,
+				...box(child),
+			})),
+		emptyState: container?.querySelectorAll(".posa-cart-empty-state").length || 0,
+	};
+};
+
+const reportCartRenderProblem = () => {
+	const mode = useFallbackTable.value ? "fallback" : "virtual";
+	if (renderCheckReported[mode]) return;
+	renderCheckReported[mode] = true;
+	try {
+		const details = JSON.stringify(describeCartDom());
+		console.warn("POS cart rows missing", details);
+		(window as any).frappe?.call?.({
+			method: "posawesome.posawesome.api.utilities.log_client_error",
+			args: {
+				payload: {
+					kind: "cart_render_check",
+					message: `Cart has items but no visible rows (${mode} table)`,
+					stack: details,
+					route: window.location.pathname,
+					url: window.location.href,
+					userAgent: navigator.userAgent,
+					timestamp: new Date().toISOString(),
+				},
+			},
+		});
+	} catch (error) {
+		console.warn("Unable to report cart render problem", error);
+	}
+};
+
+const verifyRowsRendered = () => {
+	renderCheckTimer = null;
+	const container = tableContainer.value;
+	if (!container || !items.value.length || hasItemSearch.value) return;
+	// Table not on screen at all (another view is showing): nothing to check
+	if (!container.isConnected || container.offsetParent === null) return;
+	const rows = Array.from(container.querySelectorAll(".posa-cart-item-row"));
+	if (rows.some((row) => row.getBoundingClientRect().height > 1)) return;
+
+	reportCartRenderProblem();
+	if (!useFallbackTable.value) {
+		useFallbackTable.value = true;
+		scheduleRenderCheck();
+	}
+};
+
+const scheduleRenderCheck = () => {
+	if (renderCheckTimer) window.clearTimeout(renderCheckTimer);
+	renderCheckTimer = window.setTimeout(verifyRowsRendered, 700);
+};
+
+watch(() => items.value.length, scheduleRenderCheck);
+
+// Bring the row touched by the latest add/scan into view and flash it
+const recentRowId = ref<string | null>(null);
+let recentRowTimer: number | null = null;
+let rowRevealToken = 0;
+
+const getScrollWrapper = () =>
+	(tableContainer.value?.querySelector(".v-table__wrapper") as HTMLElement | null) || tableContainer.value;
+
+const revealRow = async (rowId: string) => {
+	const token = ++rowRevealToken;
+	await nextTick();
+	if (token !== rowRevealToken) return;
+	const rowIndex = items.value.findIndex((row: any) => row?.posa_row_id === rowId);
+	if (rowIndex < 0) return;
+
+	const wrapper = getScrollWrapper();
+	if (rowIndex === 0) {
+		if (wrapper) wrapper.scrollTop = 0;
+		if (tableContainer.value) tableContainer.value.scrollTop = 0;
+		return;
+	}
+
+	await ensureCartGridRowRendered(
+		tableContainer.value,
+		rowIndex,
+		virtualTable.value?.scrollToIndex,
+		waitForVirtualRowRender,
+	);
+	if (token !== rowRevealToken) return;
+	const row = getCartGridRow(tableContainer.value, rowIndex);
+	if (!row || !wrapper) return;
+
+	// Keep the row clear of the sticky header when scrolling up to it
+	const headerHeight = (wrapper.querySelector("thead") as HTMLElement | null)?.offsetHeight || 0;
+	const wrapperRect = wrapper.getBoundingClientRect();
+	const rowRect = row.getBoundingClientRect();
+	if (rowRect.top < wrapperRect.top + headerHeight) {
+		wrapper.scrollTop -= wrapperRect.top + headerHeight - rowRect.top;
+	} else if (rowRect.bottom > wrapperRect.bottom) {
+		wrapper.scrollTop += rowRect.bottom - wrapperRect.bottom;
+	}
+};
+
+watch(
+	() => invoiceStore.rowActivity?.seq,
+	() => {
+		const rowId = invoiceStore.rowActivity?.rowId;
+		if (!rowId) return;
+		recentRowId.value = rowId;
+		if (recentRowTimer) window.clearTimeout(recentRowTimer);
+		recentRowTimer = window.setTimeout(() => {
+			recentRowId.value = null;
+			recentRowTimer = null;
+		}, 1500);
+		void revealRow(rowId);
+	},
+);
+
 // Watchers
 watch(() => props.displayCurrency, clearFormatCache);
 watch(() => props.pos_profile, clearFormatCache, { deep: true });
@@ -944,6 +1104,14 @@ const getItemIndex = (item: any) => {
 		return items.value.findIndex((row: any) => row?.posa_row_id === rowId);
 	}
 	return items.value.findIndex((row: any) => row === item);
+};
+
+// New lines are inserted at the top (appended in counter grid), so number from the
+// oldest line: a line keeps its number while more items are scanned.
+const getRowNumber = (item: any) => {
+	const index = getItemIndex(item);
+	if (index < 0) return 0;
+	return props.counterGrid ? index + 1 : items.value.length - index;
 };
 
 const handleQtyEditSubmitted = (item: any) => {
@@ -1176,6 +1344,8 @@ onMounted(() => {
 
 onBeforeUnmount(() => {
 	eventBus?.off?.("open_batch_serial_selector", openBatchSerialSelector);
+	if (recentRowTimer) window.clearTimeout(recentRowTimer);
+	if (renderCheckTimer) window.clearTimeout(renderCheckTimer);
 	merge.clearMergeCache();
 });
 

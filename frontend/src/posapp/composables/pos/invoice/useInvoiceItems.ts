@@ -77,6 +77,13 @@ export function useInvoiceItems(invoiceType: Ref<string>) {
 	// --- Header and Column Management ---
 	const available_columns = ref([
 		{
+			title: "#",
+			key: "row_no",
+			align: "center",
+			required: true,
+			sortable: false,
+		},
+		{
 			title: __("Name"),
 			align: "start",
 			sortable: true,

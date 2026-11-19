@@ -249,6 +249,9 @@ def _create_change_payment_entries(
             advance_payment_entry.reference_no = reference_no
             advance_payment_entry.reference_date = posting_date
 
+        # Tanami: lets a cancellation of the invoice find this entry
+        if advance_payment_entry.meta.has_field("ws_source_invoice"):
+            advance_payment_entry.ws_source_invoice = invoice_doc.name
         advance_payment_entry.flags.ignore_permissions = True
         frappe.flags.ignore_account_permission = True
         advance_payment_entry.save()
@@ -279,6 +282,9 @@ def _create_change_payment_entries(
         change_payment_entry.set_missing_values()
         change_payment_entry.set_amounts()
 
+        # Tanami: lets a cancellation of the invoice find this entry
+        if change_payment_entry.meta.has_field("ws_source_invoice"):
+            change_payment_entry.ws_source_invoice = invoice_doc.name
         change_payment_entry.flags.ignore_permissions = True
         frappe.flags.ignore_account_permission = True
         change_payment_entry.save()

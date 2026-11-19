@@ -1,4 +1,4 @@
-import { ref, computed, onMounted, onUnmounted, nextTick } from "vue";
+import { ref, computed, onMounted, onUnmounted, nextTick, watch } from "vue";
 import _ from "lodash";
 import {
 	getCardColumns,
@@ -27,34 +27,32 @@ export function useItemSelectorLayout(options: SelectorLayoutOptions = {}) {
 	const itemsContainerRef = ref<any>(null);
 	const scrollThrottle = ref<number | null>(null);
 
+	// Width of the items panel itself, kept current by a ResizeObserver
+	const containerWidth = ref(0);
+	const MIN_CARD_WIDTH = 150;
+	const MAX_COLUMNS = 6;
+	const MIN_USABLE_HEIGHT = 160;
+
 	// Computed Metrics
-	const cardColumns = computed(() => getCardColumns(windowWidth.value));
 	const cardGap = computed(() => getCardGap(windowWidth.value));
 	const cardPadding = computed(() => getCardPadding(windowWidth.value));
-
-	const cardRowHeight = computed(() => {
-		if (windowWidth.value <= 768) {
-			return 260;
+	// Columns follow the panel width, not the window, so cards never overflow the panel
+	const cardColumns = computed(() => {
+		const width = containerWidth.value;
+		if (!width) {
+			return getCardColumns(windowWidth.value);
 		}
-		if (windowWidth.value <= 1200) {
-			return 280;
-		}
-		return 300;
+		const usable = width - cardPadding.value * 2 + cardGap.value;
+		const fit = Math.floor(usable / (MIN_CARD_WIDTH + cardGap.value));
+		return Math.min(MAX_COLUMNS, Math.max(1, fit));
 	});
+
+	const cardRowHeight = computed(() => (windowWidth.value <= 768 ? 196 : 212));
 
 	const cardSlotHeight = computed(() => cardRowHeight.value + cardGap.value);
 	const cardSlotWidth = computed(() => cardColumnWidth.value + cardGap.value);
 
-	const cardContainerWidth = computed(() => {
-		// If we have a reference to the container, try to get its width
-		// Otherwise fallback to an estimated width based on window
-		if (itemsContainerRef.value && itemsContainerRef.value.$el) {
-			return itemsContainerRef.value.$el.clientWidth;
-		}
-		// Fallback estimation (e.g. 5 columns of regular grid)
-		// This is just a safe default until mounted
-		return windowWidth.value * 0.4; // Approx 40% of screen for items selector usually
-	});
+	const cardContainerWidth = computed(() => containerWidth.value || windowWidth.value * 0.4);
 
 	const cardColumnWidth = computed(() => {
 		const columns = Math.max(1, cardColumns.value);
@@ -68,8 +66,7 @@ export function useItemSelectorLayout(options: SelectorLayoutOptions = {}) {
 		const gapTotal = cardGap.value * (columns - 1);
 		const paddingTotal = cardPadding.value * 2;
 		const available = Math.max(0, containerWidth - gapTotal - paddingTotal);
-		const width = Math.floor(available / columns);
-		return Math.max(180, width);
+		return Math.max(MIN_CARD_WIDTH, Math.floor(available / columns));
 	});
 
 	// Actions
@@ -114,10 +111,14 @@ export function useItemSelectorLayout(options: SelectorLayoutOptions = {}) {
 		const headerHeight = stickyHeader ? stickyHeader.offsetHeight : 0;
 		const availableHeight = containerHeight - headerHeight;
 
-		// Only apply if calculated height is valid
-		if (availableHeight > 0) {
+		// Only apply if calculated height is valid. On phones the measured height is
+		// circular (it shrinks to whatever cap we set), so a tiny value must not stick.
+		if (availableHeight > MIN_USABLE_HEIGHT) {
 			el.style.maxHeight = `${availableHeight}px`;
 			isOverflowing.value = el.scrollHeight > availableHeight;
+		} else {
+			el.style.maxHeight = "";
+			isOverflowing.value = el.scrollHeight > el.clientHeight;
 		}
 
 		// Also schedule metrics update as this might affect layout
@@ -146,17 +147,33 @@ export function useItemSelectorLayout(options: SelectorLayoutOptions = {}) {
 		});
 	};
 
+	let containerObserver: ResizeObserver | null = null;
+	const observeContainer = () => {
+		containerObserver?.disconnect();
+		const el = getItemsContainerElement();
+		if (!el || typeof ResizeObserver === "undefined") return;
+		containerObserver = new ResizeObserver((entries) => {
+			const entry = entries[0];
+			if (entry) containerWidth.value = Math.floor(entry.contentRect.width);
+		});
+		containerObserver.observe(el);
+		containerWidth.value = el.clientWidth;
+	};
+	watch(itemsContainerRef, () => nextTick(observeContainer));
+
 	// Lifecycle
 	onMounted(() => {
 		window.addEventListener("resize", scheduleCardMetricsUpdate);
 		nextTick(() => {
 			updateWindowWidth();
 			checkItemContainerOverflow();
+			observeContainer();
 		});
 	});
 
 	onUnmounted(() => {
 		window.removeEventListener("resize", scheduleCardMetricsUpdate);
+		containerObserver?.disconnect();
 		if (scrollThrottle.value) {
 			cancelAnimationFrame(scrollThrottle.value);
 		}

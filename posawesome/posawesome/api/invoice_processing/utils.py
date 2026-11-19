@@ -95,6 +95,11 @@ def _resolve_effective_price_list(
     return fallback_price_list
 
 
+def _plain_number(value):
+    """25.0 -> 25, 7.5 -> 7.5 (no float noise)."""
+    return f"{flt(value, 3):g}"
+
+
 def _build_invoice_remarks(invoice_doc):
     """Generate the invoice remarks string with item totals and grand total."""
 
@@ -105,10 +110,14 @@ def _build_invoice_remarks(invoice_doc):
     for item in invoice_doc.items:
         if item.item_name and item.rate and item.qty:
             total = item.rate * item.qty
-            lines.append(f"{item.item_name} - Rate: {item.rate}, Qty: {item.qty}, Amount: {total}")
+            # Tanami: Arabic wording, shown in the ledger and the customer statement
+            lines.append(
+                f"{item.item_name} - السعر: {_plain_number(item.rate)}، "
+                f"الكمية: {_plain_number(item.qty)}، القيمة: {_plain_number(total)}"
+            )
 
     if lines:
-        lines.append(f"\nGrand Total: {invoice_doc.grand_total}")
+        lines.append(f"\nالإجمالي: {_plain_number(invoice_doc.grand_total)}")
 
     return "\n".join(lines)
 

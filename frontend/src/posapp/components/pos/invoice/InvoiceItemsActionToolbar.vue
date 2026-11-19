@@ -3,7 +3,15 @@
 		<v-text-field
 			ref="itemSearchField"
 			:model-value="itemSearch"
-			@update:model-value="$emit('update:itemSearch', $event)"
+			@update:model-value="onSearchInput"
+			@keydown="markUserGesture"
+			@paste="markUserGesture"
+			@drop="markUserGesture"
+			@cut="markUserGesture"
+			@compositionstart="markUserGesture"
+			@compositionupdate="markUserGesture"
+			type="search"
+			name="pos-cart-item-search"
 			density="compact"
 			variant="solo"
 			color="primary"
@@ -13,6 +21,13 @@
 				hide-details
 				clearable
 				autocomplete="off"
+				autocorrect="off"
+				autocapitalize="off"
+				spellcheck="false"
+				data-1p-ignore="true"
+				data-lpignore="true"
+				data-bwignore="true"
+				data-form-type="other"
 				data-pos-arrow-enters-invoice-grid
 			></v-text-field>
 		<v-btn
@@ -116,6 +131,30 @@ const updateSelectedColumns = () => {
 	showColumnSelector.value = false;
 };
 
+// Browsers (Firefox especially) ignore autocomplete="off" and inject the saved
+// login username (e.g. "administrator") into this field when a password input
+// (the cashier PIN dialog) exists on the page. That silently filters the cart
+// to "No matching items". Only accept text that follows a real user gesture
+// in this field (keystroke, barcode scan, paste, drop, IME input).
+let lastUserGestureAt = 0;
+const markUserGesture = () => {
+	lastUserGestureAt = Date.now();
+};
+const USER_GESTURE_WINDOW_MS = 1500;
+
+const getNativeInput = () => itemSearchField.value?.$el?.querySelector?.("input") || null;
+
+const onSearchInput = (value) => {
+	const hasText = typeof value === "string" && value.length > 0;
+	if (hasText && Date.now() - lastUserGestureAt > USER_GESTURE_WINDOW_MS) {
+		const input = getNativeInput();
+		if (input) input.value = props.itemSearch || "";
+		if (props.itemSearch) emit("update:itemSearch", props.itemSearch);
+		return;
+	}
+	emit("update:itemSearch", value);
+};
+
 const focusSearch = () => {
 	itemSearchField.value?.focus?.();
 };
@@ -141,3 +180,11 @@ defineExpose({
 	focusSearch,
 });
 </script>
+
+<style scoped>
+.item-search-field :deep(input[type="search"]::-webkit-search-cancel-button),
+.item-search-field :deep(input[type="search"]::-webkit-search-decoration) {
+	-webkit-appearance: none;
+	appearance: none;
+}
+</style>

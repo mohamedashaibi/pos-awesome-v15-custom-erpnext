@@ -448,6 +448,63 @@ export function watchPrintWindow(
 	}
 }
 
+/**
+ * Tanami: print ready-made HTML (a receipt rendered by the server from the invoice on
+ * screen) through a hidden frame. With the browser started in kiosk-printing mode this
+ * goes straight to the default printer.
+ */
+export function printHtmlDocument(html: string): Promise<void> {
+	return new Promise((resolve, reject) => {
+		if (!html) {
+			reject(new Error("Nothing to print"));
+			return;
+		}
+		const iframe = document.createElement("iframe");
+		iframe.style.position = "fixed";
+		iframe.style.right = "0";
+		iframe.style.bottom = "0";
+		iframe.style.width = "0";
+		iframe.style.height = "0";
+		iframe.style.border = "0";
+		const cleanup = () => setTimeout(() => iframe.remove(), 1000);
+		iframe.onload = async () => {
+			const target = iframe.contentWindow;
+			if (!target) {
+				iframe.remove();
+				reject(new Error("Print frame is not available"));
+				return;
+			}
+			try {
+				// fonts and the logo must be in before the page is laid out for the printer
+				await Promise.race([
+					Promise.all([
+						(target.document as any).fonts?.ready,
+						...Array.from(target.document.images || []).map((img) =>
+							img.complete
+								? null
+								: new Promise((done) => {
+										img.onload = img.onerror = done;
+									}),
+						),
+					]),
+					new Promise((done) => setTimeout(done, 1500)),
+				]);
+				target.addEventListener("afterprint", cleanup, { once: true });
+				// some browsers never fire afterprint for a frame
+				setTimeout(() => iframe.remove(), 120000);
+				target.focus();
+				target.print();
+				resolve();
+			} catch (err) {
+				iframe.remove();
+				reject(err);
+			}
+		};
+		iframe.srcdoc = html;
+		document.body.appendChild(iframe);
+	});
+}
+
 export function silentPrint(url: string, options: PrintOptions = {}) {
 	if (!url) return;
 	try {
